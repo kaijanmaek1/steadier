@@ -22,7 +22,13 @@ export function parseIntent(prompt=''){
  if(styles.length===1)mode=styles[0];
  return {include:[...include],exclude:[...exclude],includeTerms:[...includeTerms].slice(0,12),excludeTerms:[...excludeTerms].slice(0,12),mode};
 }
-export function matchesTerm(text,term){const words=tokens(text),family=species[subject(term)];return family?words.some(word=>family.includes(word)):words.includes(term);}
+export function matchesTerm(text,term){
+ const words=tokens(text),family=species[subject(term)]||[term];
+ if(words.some(word=>family.includes(word)))return true;
+ // Common explicit topic hashtags, without matching unrelated ordinary words.
+ const suffixes=['softiktok','sofinstagram','video','videos','meme','memes','life','love','lover','lovers','training'];
+ return [...text.toLowerCase().matchAll(/#([\p{L}\p{N}_]+)/gu)].some(([,tag])=>family.some(word=>suffixes.some(suffix=>tag.replaceAll('_','')===word+suffix)));
+}
 export function positiveSearchQuery(prompt='') {
  const plan=parseIntent(prompt),words=tokens(prompt);
  const context=new Set('am have has feel feeling suffering suffer from depression depressed anxiety anxious mood recovery recovering mental health illness treatment therapy medication suicidal suicide selfharm'.split(' '));
@@ -39,11 +45,14 @@ export function filterReason(state,item,softened=[]){
  const mode=settings?.mode||'both';
  if(mode==='memes'&&kind==='Informational style')return 'Your session choice: memes';
  if(mode==='serious'&&kind==='Meme / humour')return 'Your session choice: serious content';
- const unknown=item.category==='Unknown'||(mode!=='both'&&(kind==='Unknown'||kind==='Mixed / uncertain'));
+ const hasTopics=plan.include.length||plan.includeTerms.length;
+ const positiveText=item.primaryText??text;
+ // Comments can inform exclusions/style, but cannot alone satisfy a wanted topic.
+ const match=plan.include.some(category=>matchesCategory(positiveText,category)||(item.primaryText===undefined&&category===item.category))||plan.includeTerms.some(t=>matchesTerm(positiveText,t));
+ const unknown=(item.category==='Unknown'&&!match)||(mode!=='both'&&(kind==='Unknown'||kind==='Mixed / uncertain'));
  if(settings?.strict&&unknown)return 'Uncertain content: focused mode';
- if(settings?.focused&&(plan.include.length||plan.includeTerms.length)){
-  const match=plan.include.some(category=>category===item.category||matchesCategory(text,category))||plan.includeTerms.some(t=>matchesTerm(text,t));
-  if(!match&&(item.category!=='Unknown'||settings.strict))return 'Outside your requested topics';
+ if(settings?.focused&&hasTopics){
+  if(!match)return positiveText.trim()?'Outside your requested topics':'No readable text matching your request';
  }
  if(state.preferences[item.category]!=='show'&&softened.includes(item.category))return `Learned filter: ${item.category}`;
  return '';

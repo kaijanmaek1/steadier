@@ -1,0 +1,18 @@
+import assert from 'node:assert/strict';
+import {filterReason,parseIntent,matchesTerm} from './intent.mjs';
+const state=(prompt,extra={})=>({preferences:{},active:{intent:{prompt,plan:parseIntent(prompt),mode:'both',focused:true,strict:false,...extra}}});
+const item=(text,category='Unknown',comments='')=>({category,primaryText:text,matchText:[text,comments].join(' '),analysis:{kind:'Unknown'}});
+assert.ok(filterReason(state('dogs'),item('a cooking recipe')),'Unknown unrelated content must be filtered');
+assert.ok(filterReason(state('dogs'),item('')),'Missing captions must not silently bypass the requested topic');
+assert.equal(filterReason(state('dogs'),item('a playful puppy')),'');
+assert.equal(filterReason(state('dogs',{strict:true}),item('a playful puppy')),'','Literal subject evidence can match despite an Unknown category');
+assert.ok(filterReason(state('dogs'),item('cats playing','Animals','I love dogs')),'Unrelated comments cannot satisfy a positive dog request');
+assert.ok(filterReason(state('nature'),item('a football match','Nature','nature is wonderful')),'Comment-derived topic classification cannot satisfy the request');
+assert.equal(filterReason(state('dogs'),item('#dogsoftiktok')),'');
+assert.equal(filterReason(state('dogs'),item('#puppyvideos')),'');
+assert.ok(filterReason(state('dogs'),item('#catsoftiktok')));
+assert.equal(matchesTerm('hotdogs dogecoin','dog'),false);
+assert.equal(filterReason(state('dogs',{focused:false}),item('a recipe')),'','An explicit opt-out still allows other topics');
+assert.ok(filterReason(state('no politics'),item('a forest walk','Nature','politics and election')),'Exclusions still consider loaded comments');
+assert.equal(filterReason(state(''),item('')),'','Empty prompts do not block everything');
+console.log('Passed prompt filtering: unknown/missing-evidence bypass, primary-topic evidence, comment contamination, specific hashtags and opt-out.');

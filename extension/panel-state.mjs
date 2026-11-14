@@ -33,6 +33,12 @@ export function selectCurrent(items,now=Date.now()){
 // Attribute ownership permits two masks to temporarily cover the same subtree.
 // Each attribute is restored to its original value only when its final owner exits.
 const maskedElements=new Map();
+// Metadata may still be read locally under our visual cover. Respect attributes
+// originally set by the platform, rather than our temporary accessibility mask.
+export function originalAriaHidden(element){
+ const record=maskedElements.get(element);
+ return record ? record.before['aria-hidden'] : element.getAttribute?.('aria-hidden') ?? null;
+}
 export function createMediaMask(root,overlay){
  const owner={},owned=new Set();let active=true;
  function release(element){
