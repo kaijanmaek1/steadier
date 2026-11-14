@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "Steadier — mindful TikTok & Instagram",
+  "version": "0.3.1",
+  "description": "Local mood check-ins and caption-based video filtering on TikTok and Instagram websites.",
+  "permissions": ["storage"],
+  "background": {"service_worker": "background.js", "type": "module"},
+  "action": {"default_title": "Steadier: open TikTok or Instagram to use the on-page panel"},
+  "content_scripts": [{"matches": ["https://www.tiktok.com/*", "https://www.instagram.com/*"], "js": ["content.js"], "run_at": "document_idle"}],
+  "web_accessible_resources": [{"resources": ["classify.mjs", "extract.mjs", "intent.mjs", "likes.mjs", "panel-state.mjs"], "matches": ["https://www.tiktok.com/*", "https://www.instagram.com/*"]}]
+}
