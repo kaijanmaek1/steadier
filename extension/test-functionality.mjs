@@ -16,7 +16,7 @@ assert.ok(filterReason(policy('nature'),item('Learning','a science tutorial')));
 assert.ok(parseIntent('I want not politics').exclude.includes('News'));
 assert.deepEqual(parseIntent('no politics and comparison').include,[]);
 assert.ok(parseIntent('no politics and comparison').exclude.includes('Comparison'));
-assert.ok(parseIntent('no politics but show dogs').include.includes('Animals'));
+assert.ok(parseIntent('no politics but show dogs').includeTerms.includes('dog'));
 assert.ok(parseIntent('don’t show politics').exclude.includes('News'));
 assert.equal(parseIntent('a mix of memes and serious content').mode,'both');
 assert.deepEqual(parseIntent('a mix of memes and serious content').includeTerms,[]);

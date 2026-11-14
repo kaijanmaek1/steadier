@@ -1,17 +1,26 @@
-﻿(async () => {
+(async () => {
+  let keyboardHost = null, keyboardShadow = null, isolateKeys = null;
+  // Register before asynchronous imports and before the site's shortcut handlers.
+  for (const type of ['keydown','keypress','keyup']) window.addEventListener(type,event => {
+    if (isolateKeys && keyboardHost) isolateKeys(event,keyboardHost,keyboardShadow?.activeElement);
+  },true);
   const {analyse, allowedPage, clampPosition} = await import(chrome.runtime.getURL('classify.mjs'));
   const {extract} = await import(chrome.runtime.getURL('extract.mjs'));
+  const {isolateEditableKeys} = await import(chrome.runtime.getURL('keyboard.mjs'));
+  isolateKeys = isolateEditableKeys;
   const {createAutoSkip,advanceVideo,filterPresentation,silenceFlagged,forwardTarget} = await import(chrome.runtime.getURL('auto-skip.mjs'));
-  const {aliases, parseIntent, filterReason, summariseIntent} = await import(chrome.runtime.getURL('intent.mjs'));
+  const {aliases, parseIntent, filterReason, summariseIntent,positiveSearchQuery} = await import(chrome.runtime.getURL('intent.mjs'));
   const {likeButtons, buttonLikeState} = await import(chrome.runtime.getURL('likes.mjs'));
   const {createActionQueue, createPanelState, reconcilePanelState, sessionKey, selectCurrent, createMediaMask} = await import(chrome.runtime.getURL('panel-state.mjs'));
   const categories = Object.keys(aliases);
   const scopedTypes = new Set(['end', 'intent', 'seen', 'vote', 'category', 'update', 'like']);
+  if (document.readyState === 'loading') await new Promise(resolve=>document.addEventListener('DOMContentLoaded',resolve,{once:true}));
   const host = document.createElement('div');
   host.id = 'steadier-extension';
   host.style.cssText = 'position:fixed;bottom:18px;right:18px;z-index:2147483647';
   document.documentElement.append(host);
   const shadow = host.attachShadow({mode:'closed'});
+  keyboardHost = host;keyboardShadow = shadow;
   shadow.innerHTML = `<style>
     :host{all:initial;font:14px system-ui;color:#233d37}*{box-sizing:border-box}
     section{width:min(350px,calc(100vw - 16px));max-height:85vh;overflow:auto;background:#f8faf5;border:1px solid #cbd8c2;border-radius:16px;padding:18px;box-shadow:0 8px 40px #0003}
@@ -81,6 +90,7 @@
   function updateBusyControls() {
     for (const button of shadow.querySelectorAll('#submit,#yes,#apply-intent')) button.disabled = saving || (button.id === 'submit' && !canSubmitMood());
     $('#body').setAttribute('aria-busy', String(saving));
+    if ($('#find-videos')) $('#find-videos').disabled = saving || !data?.state.active || !positiveSearchQuery(readIntent().prompt);
   }
   function perform(message, {onSuccess, focusId, successMessage} = {}) {
     const captured = captureMessage(message);
@@ -104,7 +114,7 @@
   function intentOptions() {return panel.intent || data?.state.active?.intent || data?.state.lastIntent || {mode:'both',prompt:'',focused:true,strict:false};}
   function intentForm() {
     const options = intentOptions();
-    return `<div id="intent-form"><h3>What would you like to see?</h3><label for="style">Content style</label><select id="style" style="width:100%;margin:7px 0"><option value="both" ${options.mode === 'both' ? 'selected' : ''}>A mix / follow my prompt</option><option value="memes" ${options.mode === 'memes' ? 'selected' : ''}>Memes and humour</option><option value="serious" ${options.mode === 'serious' ? 'selected' : ''}>Serious / informational content</option></select><label for="request">Tell Steadier what you want</label><textarea id="request" maxlength="500" placeholder="Calm nature videos and dogs, less politics">${escape(options.prompt || '')}</textarea><label class="checkbox"><input id="focused" type="checkbox" ${options.focused !== false ? 'checked' : ''}>Soften topics outside my request</label><label class="checkbox"><input id="strict" type="checkbox" ${options.strict ? 'checked' : ''}>Also soften uncertain videos</label><small id="intent-summary"></small><p><small>Local English keyword rules, not a conversational AI. Unknown words are matched literally. Serious means informational style, not verified facts. Your prompt is saved locally.</small></p></div>`;
+    return `<div id="intent-form"><h3>What would you like to see?</h3><label for="style">Content style</label><select id="style" style="width:100%;margin:7px 0"><option value="both" ${options.mode === 'both' ? 'selected' : ''}>A mix / follow my prompt</option><option value="memes" ${options.mode === 'memes' ? 'selected' : ''}>Memes and humour</option><option value="serious" ${options.mode === 'serious' ? 'selected' : ''}>Serious / informational content</option></select><label for="request">Tell Steadier what you want</label><textarea id="request" maxlength="500" placeholder="Calm nature videos and dogs, less politics">${escape(options.prompt || '')}</textarea>${data.platform === 'TikTok' ? `<p id="search-query"></p><button id="find-videos" type="button" ${data.state.active ? '' : 'disabled'}>Find videos on TikTok</button>${!data.state.active ? '<p><small>Start a session to search with these filters.</small></p>' : ''}` : ''}<label class="checkbox"><input id="focused" type="checkbox" ${options.focused !== false ? 'checked' : ''}>Soften topics outside my request</label><label class="checkbox"><input id="strict" type="checkbox" ${options.strict ? 'checked' : ''}>Also soften uncertain videos</label><small id="intent-summary" aria-live="polite"></small><p><small>Find videos opens TikTok search. Steadier filters loaded results and cannot control their ranking. Local English rules match readable text. Dogs matches dog/puppy words, not all animals. Unknown videos may pass unless you enable uncertain filtering. Your prompt is saved locally.</small></p></div>`;
   }
   function readIntent() {
     if (!$('#request')) return {...intentOptions()};
@@ -177,6 +187,13 @@
       const updateIntent = () => {panel.intent = readIntent();panel.intentDirty = true;updateIntentSummary();};
       for (const id of ['request','style','focused','strict']) $('#'+id).addEventListener('input',updateIntent);
       updateIntentSummary();
+      if ($('#find-videos')) $('#find-videos').onclick = async () => {
+        if (saving || !data.state.active) return;
+        const intent = readIntent(), query = positiveSearchQuery(intent.prompt), origin = sessionKey(data.state), epoch = data.state.resetEpoch || 0;
+        if (!query) return;
+        const saved = await perform({type:'intent',intent},{onSuccess:response => {panel.intent = response.state.active.intent;panel.intentDirty = false;}});
+        if (saved && sessionKey(data.state) === origin && (data.state.resetEpoch || 0) === epoch) location.assign(`https://www.tiktok.com/search/video?q=${encodeURIComponent(query)}`);
+      };
       if ($('#apply-intent')) $('#apply-intent').onclick = () => perform({type:'intent',intent:readIntent()},{onSuccess:response => {panel.intent = response.state.active.intent;panel.intentDirty = false;},successMessage:'Session request applied.'});
     }
     for (const select of shadow.querySelectorAll('[data-pref]')) select.onchange = () => perform({type:'preference',category:select.dataset.pref,value:select.value},{successMessage:'Preference saved.'});
@@ -188,6 +205,9 @@
   function updateIntentSummary() {
     const options = readIntent(), plan = parseIntent(options.prompt);
     $('#intent-summary').textContent = summariseIntent(plan,options.mode === 'both' ? plan.mode : options.mode);
+    const query = positiveSearchQuery(options.prompt);
+    if ($('#search-query')) $('#search-query').textContent = query ? `Search topic sent to TikTok: ${query}. Mood and history are not sent. Search results still use your local filters.` : 'Add a topic such as dogs to search. Exclusions alone do not create a search.';
+    updateBusyControls();
   }
   function exportData() {
     const url = URL.createObjectURL(new Blob([JSON.stringify(data.state,null,2)],{type:'application/json'}));

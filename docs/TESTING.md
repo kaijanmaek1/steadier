@@ -18,6 +18,10 @@ The runner validates extension resource paths, syntax-checks JavaScript modules 
 | `extension/test-interactions.mjs` | Panel state preservation/reset, queued-action outcomes and eligible current-video selection using production helpers |
 | `extension/test-accessibility.mjs` | Production media-mask attribute ownership/restoration on DOM-shaped fixtures and secondary-text contrast calculated from source colours |
 | `extension/test-auto-skip.mjs` | Loaded-post lookahead, reveal priority, session/visibility/pause gates, navigation cooldown, stalled-navigation retries, missing-next handling and bounded retry backoff |
+| `extension/test-keyboard.mjs` | Production keyboard guard isolates editable panel keys while retaining native defaults, Tab/composition and drag-handle keys |
+| `extension/test-specific-intent.mjs` | Dog/cat term families, persisted prompt reinterpretation, positive search query construction and exclusion-only/context handling |
+
+Version 0.3.4 still needs live keyboard and search verification: refresh the page after extension reload, type `c r dogs` with spaces into the request, use Tab and an IME, start a session and choose Find videos on TikTok. Confirm the displayed query is used, exclusion-only drafts do not search, and mood/session metadata is absent from the destination URL. Automated fixtures do not establish TikTok's current URL routing, result relevance or live keyboard behaviour.
 
 Automatic TikTok skipping requires a live browser check: reload the extension and TikTok, start a session, soften a matching topic, and verify no blocking overlays, forward-scroll lookahead, reversible muting, advancement, the off switch, Reveal with skipping off, and automatic retry after a bounded batch of advances. Check stopping at session end and while editing a request. These live checks have not been performed for this change.
 

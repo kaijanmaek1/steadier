@@ -6,7 +6,7 @@ import {parseIntent,filterReason} from './intent.mjs';
 import {buttonLikeState} from './likes.mjs';
 import {scoreCategory} from './engine.mjs';
 const plan=parseIntent('Calm nature videos and dogs, less politics');
-assert.ok(plan.include.includes('Nature'));assert.ok(plan.include.includes('Animals'));assert.ok(plan.exclude.includes('News'));assert.ok(!plan.include.includes('News'));
+assert.ok(plan.include.includes('Nature'));assert.ok(plan.includeTerms.includes('dog'));assert.ok(plan.exclude.includes('News'));assert.ok(!plan.include.includes('News'));
 assert.equal(parseIntent('no memes, show serious content').mode,'serious');
 assert.equal(parseIntent('no serious content, more memes').mode,'memes');
 assert.ok(parseIntent('astronomy, avoid spoilers').includeTerms.includes('astronomy'));assert.ok(parseIntent('astronomy, avoid spoilers').excludeTerms.includes('spoilers'));
@@ -68,7 +68,7 @@ const instagram=await call({type:'get'},{tab:{id:2},url:'https://www.instagram.c
 assert.ok((await call({type:'get'},{url:'https://example.com',tab:{id:3}})).error);
 await call({type:'reset'});assert.equal((await call({type:'get'})).state.sessions.length,0);
 await call({type:'start',mood:50,consent:true,intent:{prompt:'dogs, less politics',mode:'memes',focused:true}});
-let active=(await call({type:'get'})).state.active;assert.equal(active.intent.mode,'memes');assert.ok(active.intent.plan.include.includes('Animals'));
+let active=(await call({type:'get'})).state.active;assert.equal(active.intent.mode,'memes');assert.ok(active.intent.plan.includeTerms.includes('dog'));
 await call({type:'like',id:'dog',category:'Animals',liked:true});
 let liked=(await call({type:'get'})).state;const firstScore=scoreCategory(liked,'Animals').score;assert.ok(firstScore>0);
 await call({type:'like',id:'dog',category:'Animals',liked:true});assert.equal(scoreCategory((await call({type:'get'})).state,'Animals').score,firstScore);

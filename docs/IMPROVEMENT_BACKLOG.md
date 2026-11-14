@@ -4,6 +4,7 @@ Audit date: 2026-11-14. Source: working `steadier/` project, extension v0.3.0 an
 
 | Priority | Finding and desired result | Owner | Status |
 | --- | --- | --- | --- |
+| P2 | TikTok shortcuts steal prompt typing; dog requests match all Animals; requests cannot fetch topic results. Isolate editable keys, keep species specific and add explicit TikTok topic search. | Programming / Project lead | Implemented; eight automated suites passed; live search/keyboard checks pending |
 | P2 | Flagged TikTok videos require manual scrolling. Add session-scoped automatic advancing, stalled-navigation retries, no-overlay automatic mode and forward-scroll lookahead, an off switch and bounded retry backoff. | Programming / Project lead | Implemented; six automated suites passed; live TikTok verification pending |
 | P1 | GitHub contains top-level files but lacks the `dist/` and `extension/` source directories. Prepare the complete source and team setup in a reviewable branch. | Project lead | Complete source prepared for review; merge pending |
 | P1 | Passive updates and preference actions reset mood confirmation, consent or keyboard focus. Preserve drafts and focus until the user completes/discards the check-in. | Interactions / UX | Implemented; automated checks passed |

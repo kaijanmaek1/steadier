@@ -2,6 +2,12 @@
 
 An experimental Chrome/Edge Manifest V3 extension. It overlays mood check-ins and softens selected videos on the actual websites. It does not change either platform's recommendation engine or run inside the native mobile apps.
 
+## Version 0.3.4: prompt typing and topic search
+
+Start a session and enter a request, then choose **Find videos on TikTok**. Steadier applies the draft filters before opening TikTok video search for the positive topic query shown in the panel. Only that query is sent to TikTok, not mood scores or session history. Exclusions stay local and exclusion-only requests do not start a search. Ordinary Start/Apply actions do not navigate. Dog/puppy and cat/kitten requests are matched separately rather than accepting all Animals.
+
+Panel editing keys are isolated from website shortcuts while preserving normal typing, spaces, Tab and composition. Browser verification on live TikTok is still required.
+
 ## Version 0.3.1: reliability and accessibility fixes
 
 This patch addresses session-scoped asynchronous actions, panel input/reset state, cross-tab state, current-video feedback, mixed-topic exclusions, negative/mixed-style requests, strict uncertainty and accessible cover restoration. The standalone demo also has more readable secondary text. The project now includes reusable lead/specialist roles and a repeatable check runner.
