@@ -37,7 +37,13 @@ export function forwardTarget(items,height) {
   if(index<0 || !ordered[index+1]?.blocked || ordered[index+1]?.revealed) return null;
   return ordered.slice(index+2,index+11).find(item=>!item.blocked || item.revealed)?.item || null;
 }
-export function advanceVideo({active,target,retry},next,{style=getComputedStyle}={}) {
+export function advanceVideo({active,target,retry,matchingOnly=false},next,{style=getComputedStyle}={}) {
+  // A focused topic request may jump only to the verified loaded match.
+  // Native Next/scroll-by retries can silently advance to unrelated content.
+  if(matchingOnly) {
+    if(target) target.video.scrollIntoView({behavior:'instant',block:'center'});
+    return;
+  }
   if(retry && next) {next.click();return;}
   if(retry) {
     for(let node=active.video.parentElement;node;node=node.parentElement) {
@@ -52,7 +58,7 @@ export function advanceVideo({active,target,retry},next,{style=getComputedStyle}
 export function createAutoSkip({limit=10,cooldown=700,backoff=5000}={}) {
   let session=null, attempted=new Map(), count=0, last=-Infinity, clearSince=null, retryAfter=0;
   function reset(key=null) {session=key;attempted=new Map();count=0;last=-Infinity;clearSince=null;retryAfter=0;}
-  function next({key,enabled,visible=true,paused=false,items,now=Date.now(),height,canAdvance=false}) {
+  function next({key,enabled,visible=true,paused=false,items,now=Date.now(),height,canAdvance=false,matchingOnly=false}) {
     if (key!==session) reset(key);
     if (!key || !enabled || !visible || paused) return null;
     const ordered=items.filter(item=>item.connected && item.rect.width>0 && item.rect.height>0)
@@ -67,17 +73,22 @@ export function createAutoSkip({limit=10,cooldown=700,backoff=5000}={}) {
       return null;
     }
     clearSince=null;
+    const index=ordered.indexOf(active);
+    const upcoming=matchingOnly ? ordered.slice(index+1) : ordered.slice(index+1,index+11);
+    const match=upcoming.find(item=>!item.blocked || (!matchingOnly && item.revealed));
+    // Do not hunt through unrelated posts when none of the loaded posts match.
+    // Reevaluate on later scans, so a newly loaded matching post can be used.
+    if(matchingOnly && !match) return {noMatch:true};
     if(now<retryAfter) return null;
     if(count>=limit) {count=0;retryAfter=now+backoff;return {waiting:true};}
     const attempt=attempted.get(active.id);
     if(now-last<cooldown || (attempt && now<attempt.after)) return null;
-    const upcoming=ordered.slice(ordered.indexOf(active)+1,ordered.indexOf(active)+11);
     // Prefer an already-loaded permitted item; otherwise advance one item to load more.
-    const target=upcoming.find(item=>!item.blocked || item.revealed) || upcoming[0] || null;
+    const target=match || upcoming[0] || null;
     if (!target && !canAdvance) return null;
     const tries=(attempt?.tries || 0)+1;
     attempted.set(active.id,{tries,after:now+(tries%3===0 ? backoff : cooldown)});count++;last=now;
-    return {active:active.item,target:target?.item || null,retry:tries>1};
+    return {active:active.item,target:target?.item || null,retry:tries>1,matchingOnly};
   }
   return {next,reset};
 }

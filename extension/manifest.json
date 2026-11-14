@@ -7,5 +7,7 @@
   "background": {"service_worker": "background.js", "type": "module"},
   "action": {"default_title": "Steadier: open TikTok or Instagram to use the on-page panel"},
   "content_scripts": [{"matches": ["https://www.tiktok.com/*", "https://www.instagram.com/*"], "js": ["content.js"], "run_at": "document_start"}],
-  "web_accessible_resources": [{"resources": ["classify.mjs", "extract.mjs", "intent.mjs", "likes.mjs", "panel-state.mjs", "auto-skip.mjs", "keyboard.mjs"], "matches": ["https://www.tiktok.com/*", "https://www.instagram.com/*"]}]
+  "web_accessible_resources": [{"resources": ["classify.mjs", "extract.mjs", "intent.mjs", "likes.mjs", "panel-state.mjs", "auto-skip.mjs", "keyboard.mjs", "topic-navigation.mjs"], "matches": ["https://www.tiktok.com/*", "https://www.instagram.com/*"]}]
 }
+
+

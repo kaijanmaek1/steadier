@@ -4,6 +4,7 @@ Audit date: 2026-11-14. Source: working `steadier/` project, extension v0.3.0 an
 
 | Priority | Finding and desired result | Owner | Status |
 | --- | --- | --- | --- |
+| P1 | Topic mode advances through unrelated posts when no match exists. Jump only to readable matching loaded videos; Start/Apply can search and select a matching result, with bounded timeout and session/route guards. | Programming / Lead | Implemented; nine suites and 23 syntax checks passed; live routes/results unverified |
 | P1 | Website capture shortcuts swallow R/C while typing. Isolate prompt keyboard events in an embedded document while preserving drafts and focus. | Interactions | Implemented; eight maintained suites passed; native typing/browser checks pending |
 | P2 | Nonmatching Instagram videos only receive covers. Enable safe automatic next-video navigation and retain a cover fallback where no safe target exists. | Programming / Lead | Implemented; control selection/navigation regressions passed; live Instagram verification pending |
 | P2 | Remove the current-video topic correction selector while retaining feedback. | Interactions / Lead | Implemented; syntax and maintained suites passed; browser verification pending |

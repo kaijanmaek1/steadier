@@ -35,6 +35,19 @@ for(const platform of ['TikTok','Instagram']) {
   assert.equal(filterPresentation({...mode,platform,blocked:upcoming[0].blocked}),'skip');
   assert.equal(createAutoSkip().next({...input,items:upcoming}).target.id,'physics');
 }
+// Focused topic browsing must not cycle through unrelated posts or use native
+// next-button retries that abandon the already verified matching target.
+const focused=createAutoSkip();
+const focusedInput={...input,matchingOnly:true,canAdvance:true};
+const nonmatches=upcoming.slice(0,3);
+assert.deepEqual(focused.next({...focusedInput,items:nonmatches}),{noMatch:true});
+assert.deepEqual(focused.next({...focusedInput,now:10000,items:nonmatches}),{noMatch:true},'no native-next hunting after a delay');
+assert.deepEqual(focused.next({...focusedInput,items:[video('current',0),video('revealed-unrelated',800,true,{revealed:true})]}),{noMatch:true},'revealing an unrelated post does not make it a topic match');
+const focusedJump=focused.next({...focusedInput,items:upcoming});
+assert.equal(focusedJump.target.id,'physics');assert.equal(focusedJump.matchingOnly,true);
+assert.equal(focused.next({...focusedInput,now:1000,items:upcoming}).retry,true);
+const distant=[video('current',0),...Array.from({length:12},(_,index)=>video(`unrelated-${index}`,(index+1)*800)),video('physics-distant',13*800,false)];
+assert.equal(createAutoSkip().next({...focusedInput,items:distant}).target.id,'physics-distant','focused search can use any already-loaded forward match');
 let pauses=0;const silenced={video:{muted:false,pause(){pauses++;}}};
 silenceFlagged(silenced,true);silenceFlagged(silenced,true);assert.equal(silenced.video.muted,true);assert.equal(pauses,2);
 silenceFlagged(silenced,false);assert.equal(silenced.video.muted,false);assert.ok(!Object.hasOwn(silenced,'originalMuted'));
@@ -85,6 +98,11 @@ advanceVideo({active,target,retry:false},null,options);assert.equal(jumped,1);
 advanceVideo({active,target,retry:true},{click(){native++;}},options);assert.equal(native,1);assert.equal(scrolled,0);
 advanceVideo({active,target,retry:true},null,options);assert.equal(scrolled,800,'failed direct scroll falls back to verified scrollable ancestor');
 feed.scrollHeight=800;scrolled=0;advanceVideo({active,target,retry:true},null,options);assert.equal(scrolled,0);assert.equal(jumped,2);
+native=0;scrolled=0;jumped=0;feed.scrollHeight=2400;
+advanceVideo({active,target,retry:true,matchingOnly:true},{click(){native++;}},options);
+assert.equal(jumped,1);assert.equal(native,0);assert.equal(scrolled,0,'focused retry stays on its matching target');
+advanceVideo({active,target:null,retry:true,matchingOnly:true},{click(){native++;}},options);
+assert.equal(jumped,1);assert.equal(native,0);assert.equal(scrolled,0,'no target never triggers blind navigation');
 console.log('Passed auto-skip: lookahead, reveal, session/edit/visibility gates, throttle, bounded retries, automatic backoff recovery, native/scroll-container fallbacks.');
 
 

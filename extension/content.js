@@ -8,6 +8,7 @@
   const {analyse, allowedPage, clampPosition} = await import(chrome.runtime.getURL('classify.mjs'));
   const {createAutoSkip,advanceVideo,filterPresentation,silenceFlagged,forwardTarget,findNextVideoControl} = await import(chrome.runtime.getURL('auto-skip.mjs'));
   const {extract} = await import(chrome.runtime.getURL('extract.mjs'));
+  const {topicSearchUrl,findMatchingVideoLink} = await import(chrome.runtime.getURL('topic-navigation.mjs'));
   const {aliases, parseIntent, filterReason, summariseIntent,positiveSearchQuery} = await import(chrome.runtime.getURL('intent.mjs'));
   const {likeButtons, buttonLikeState} = await import(chrome.runtime.getURL('likes.mjs'));
   const {createActionQueue, createPanelState, reconcilePanelState, sessionKey, selectCurrent, createMediaMask, isolatePanelKeyboard, clampPanelSize, resizePanelRect} = await import(chrome.runtime.getURL('panel-state.mjs'));
@@ -50,6 +51,7 @@
   const requestQueue = createActionQueue(), actionQueue = createActionQueue();
   let data = null, current = null, minimised = false, saving = false, polling = false;
   let position = null, drag = null, panelSize = null, resizing = null;
+  let pendingTopicSearch = null;
   const autoSkip = createAutoSkip();
   let autoSkipEnabled = true;
 
@@ -123,9 +125,55 @@
     });
   }
   function intentOptions() {return panel.intent || data?.state.active?.intent || data?.state.lastIntent || {mode:'both',prompt:'',focused:true,strict:false};}
+  function focusedTopic(intent = data?.state.active?.intent) {
+    return intent?.focused !== false && !!positiveSearchQuery(intent?.prompt || '');
+  }
+  function navigationIsCurrent(origin,epoch,prompt) {
+    return !!data?.state.active && sessionKey(data.state) === origin && (data.state.resetEpoch || 0) === epoch && data.state.active.intent?.prompt === prompt;
+  }
+  function beginTopicResults() {
+    if (location.hash !== '#steadier-find-match' || !data?.state.active) return;
+    const intent = data.state.active.intent, query = positiveSearchQuery(intent?.prompt || '');
+    const expected = topicSearchUrl(data.platform,query);
+    if (!expected || location.pathname !== new URL(expected).pathname || new URL(location.href).searchParams.get('q') !== query) return;
+    pendingTopicSearch = {origin:sessionKey(data.state),epoch:data.state.resetEpoch || 0,prompt:intent.prompt,route:location.pathname+location.search,deadline:Date.now()+15000};
+    announce('Looking for a matching video in these topic results.');
+  }
+  function tryTopicResults() {
+    const pending = pendingTopicSearch;
+    if (!pending) return;
+    if (!navigationIsCurrent(pending.origin,pending.epoch,pending.prompt) || location.hash !== '#steadier-find-match' || location.pathname+location.search !== pending.route) {pendingTopicSearch = null;return;}
+    if (document.hidden || saving || panel.ending || shadow.activeElement === $('#request-frame')) return;
+    const matchState = {...data.state,active:{...data.state.active,intent:{...data.state.active.intent,focused:true}}};
+    const target = findMatchingVideoLink(document,data.platform,matchState);
+    if (target && new URL(target).pathname !== location.pathname) {
+      pendingTopicSearch = null;location.replace(target);return;
+    }
+    if (Date.now() >= pending.deadline) {
+      pendingTopicSearch = null;
+      history.replaceState(history.state,'',location.pathname+location.search);
+      announce('No readable matching video was found. Search results are open; choose a video or refine your topic.');
+    }
+  }
+  function goToRequestedVideo(intent,origin,epoch,force = false) {
+    if (!navigationIsCurrent(origin,epoch,intent.prompt) || (!force && !focusedTopic(intent))) return;
+    const query = positiveSearchQuery(intent.prompt);
+    if (!query) return;
+    const matchState = {...data.state,active:{...data.state.active,intent:{...data.state.active.intent,focused:true}}};
+    const loaded = [...tracked.values()].find(item => item.video.isConnected && !filterReason(matchState,item,data.softened));
+    if (loaded) {loaded.video.scrollIntoView({behavior:'instant',block:'center'});announce('Moved to a matching loaded video.');return;}
+    const link = findMatchingVideoLink(document,data.platform,matchState);
+    if (link && new URL(link).pathname !== location.pathname) {location.assign(link);return;}
+    const destination = topicSearchUrl(data.platform,query);
+    if (!destination) return;
+    const url = new URL(destination);
+    if (location.pathname === url.pathname && location.search === url.search) {
+      history.replaceState(history.state,'',destination);beginTopicResults();tryTopicResults();
+    } else location.assign(destination);
+  }
   function intentForm() {
     const options = intentOptions();
-    return `<div id="intent-form"><h3>What would you like to see?</h3><label for="style">Content style</label><select id="style" style="width:100%;margin:7px 0"><option value="both" ${options.mode === 'both' ? 'selected' : ''}>A mix / follow my prompt</option><option value="memes" ${options.mode === 'memes' ? 'selected' : ''}>Memes and humour</option><option value="serious" ${options.mode === 'serious' ? 'selected' : ''}>Serious / informational content</option></select><span id="request-label" style="font-size:12px">Tell Steadier what you want</span><iframe id="request-frame" title="Tell Steadier what you want" sandbox="allow-same-origin" style="display:block;width:100%;height:100px;border:0;background:#fff;color-scheme:light"></iframe>${data.platform === 'TikTok' ? `<p id="search-query"></p><button id="find-videos" type="button" ${data.state.active ? '' : 'disabled'}>Find videos on TikTok</button>${!data.state.active ? '<p><small>Start a session to search with these filters.</small></p>' : ''}` : ''}<label class="checkbox"><input id="focused" type="checkbox" ${options.focused !== false ? 'checked' : ''}>Block videos that do not match my request</label><label class="checkbox"><input id="strict" type="checkbox" ${options.strict ? 'checked' : ''}>Also soften uncertain videos</label><small id="intent-summary"></small><p><small>Local English keyword rules, not a conversational AI. Physics requests also match a small set of related physics terms; other unknown words are matched literally. Serious means informational style, not verified facts. Your prompt is saved locally.</small></p></div>`;
+    return `<div id="intent-form"><h3>What would you like to see?</h3><label for="style">Content style</label><select id="style" style="width:100%;margin:7px 0"><option value="both" ${options.mode === 'both' ? 'selected' : ''}>A mix / follow my prompt</option><option value="memes" ${options.mode === 'memes' ? 'selected' : ''}>Memes and humour</option><option value="serious" ${options.mode === 'serious' ? 'selected' : ''}>Serious / informational content</option></select><span id="request-label" style="font-size:12px">Tell Steadier what you want</span><iframe id="request-frame" title="Tell Steadier what you want" sandbox="allow-same-origin" style="display:block;width:100%;height:100px;border:0;background:#fff;color-scheme:light"></iframe>${['TikTok','Instagram'].includes(data.platform) ? `<p id="search-query"></p><button id="find-videos" type="button" ${data.state.active ? '' : 'disabled'}>Find matching video</button>${!data.state.active ? '<p><small>Start a session to find a matching video.</small></p>' : ''}` : ''}<label class="checkbox"><input id="focused" type="checkbox" ${options.focused !== false ? 'checked' : ''}>Block videos that do not match my request</label><label class="checkbox"><input id="strict" type="checkbox" ${options.strict ? 'checked' : ''}>Also soften uncertain videos</label><small id="intent-summary"></small><p><small>Local English keyword rules, not a conversational AI. Physics requests also match a small set of related physics terms; other unknown words are matched literally. Serious means informational style, not verified facts. Your prompt is saved locally.</small></p></div>`;
   }
   function promptEditor() {return $('#request-frame')?.contentDocument?.getElementById('request');}
   function readIntent() {
@@ -188,13 +236,15 @@
         $('#value').textContent = panel.mood;$('#mood-help').textContent = 'Your mood score is confirmed.';updateBusyControls();
       };
       if ($('#consent')) $('#consent').onchange = () => {panel.consent = $('#consent').checked;updateBusyControls();};
-      $('#submit').onclick = () => {
+      $('#submit').onclick = async () => {
         if (!canSubmitMood() || saving) return;
-        const ending = panel.ending, score = panel.mood, before = data.state.active?.before;
-        perform(ending ? {type:'end',mood:score} : {type:'start',protocol:2,mood:score,consent:true,intent:readIntent()}, {
-          onSuccess:() => {panel.ending = false;panel.intentDirty = false;},focusId:ending ? 'mood' : 'session-status',
+        const ending = panel.ending, score = panel.mood, before = data.state.active?.before, intent = readIntent();
+        let navigation;
+        const saved = await perform(ending ? {type:'end',mood:score} : {type:'start',protocol:2,mood:score,consent:true,intent}, {
+          onSuccess:response => {panel.ending = false;panel.intentDirty = false;navigation = {origin:sessionKey(response.state),epoch:response.state.resetEpoch || 0};},focusId:ending ? 'mood' : 'session-status',
           successMessage:ending ? `Session saved. Mood change: ${score-before >= 0 ? '+' : ''}${score-before} points.` : 'Session started. Your filters are active.'
         });
+        if (saved && !ending) goToRequestedVideo(intent,navigation.origin,navigation.epoch);
       };
     }
     if ($('#end')) $('#end').onclick = () => {panel.ending = true;panel.mood = 50;panel.touched = false;render({focusId:'mood'});};
@@ -230,9 +280,13 @@
         const intent = readIntent(), query = positiveSearchQuery(intent.prompt), origin = sessionKey(data.state), epoch = data.state.resetEpoch || 0;
         if (!query) return;
         const saved = await perform({type:'intent',intent},{onSuccess:response => {panel.intent = response.state.active.intent;panel.intentDirty = false;}});
-        if (saved && sessionKey(data.state) === origin && (data.state.resetEpoch || 0) === epoch) location.assign(`https://www.tiktok.com/search/video?q=${encodeURIComponent(query)}`);
+        if (saved) goToRequestedVideo(intent,origin,epoch,true);
       };
-      if ($('#apply-intent')) $('#apply-intent').onclick = () => perform({type:'intent',intent:readIntent()},{onSuccess:response => {panel.intent = response.state.active.intent;panel.intentDirty = false;},successMessage:'Request applied to current and upcoming videos. Nonmatching videos are skipped automatically when enabled, or covered if navigation is unavailable.'});
+      if ($('#apply-intent')) $('#apply-intent').onclick = async () => {
+        const intent = readIntent(), origin = sessionKey(data.state), epoch = data.state.resetEpoch || 0;
+        const saved = await perform({type:'intent',intent},{onSuccess:response => {panel.intent = response.state.active.intent;panel.intentDirty = false;},successMessage:'Request applied. Looking for a matching video.'});
+        if (saved) goToRequestedVideo(intent,origin,epoch);
+      };
     }
     for (const select of shadow.querySelectorAll('[data-pref]')) select.onchange = () => perform({type:'preference',category:select.dataset.pref,value:select.value},{successMessage:'Preference saved.'});
     if ($('#export')) $('#export').onclick = exportData;
@@ -244,7 +298,7 @@
     const options = readIntent(), plan = parseIntent(options.prompt);
     $('#intent-summary').textContent = summariseIntent(plan,options.mode === 'both' ? plan.mode : options.mode);
     const query = positiveSearchQuery(options.prompt);
-    if ($('#search-query')) $('#search-query').textContent = query ? `Search topic sent to TikTok: ${query}. Mood and history are not sent. Search results still use your local filters.` : 'Add a topic such as dogs to search. Exclusions alone do not create a search.';
+    if ($('#search-query')) $('#search-query').textContent = query ? `Start / Apply finds a matching loaded video or searches ${data.platform} for: ${query}. Only this topic query is sent; mood and history stay local.` : 'Add a topic such as dogs to search. Exclusions alone do not create a search.';
     updateBusyControls();
   }
   function exportData() {
@@ -440,11 +494,12 @@
     const activeRoots = [];
     const items = [...tracked.values()].sort((a,b) => a.root === b.root ? 0 : a.root.contains(b.root) ? -1 : b.root.contains(a.root) ? 1 : 0);
     const nextControl = findNextVideoControl(document,data.platform);
+    const matchingOnly = focusedTopic();
     const rects = new Map(items.filter(item => item.video.isConnected).map(item => [item,item.video.getBoundingClientRect()]));
     for (const item of items) {
       const reason = filterReason(data.state,item,data.softened);
       const rect = rects.get(item);
-      const canAdvance = !!nextControl || (!!rect && [...rects].some(([other,bounds]) => other !== item && bounds.width > 0 && bounds.height > 0 && bounds.top > rect.top + 10));
+      const canAdvance = (!matchingOnly && !!nextControl) || (!!rect && [...rects].some(([other,bounds]) => other !== item && bounds.width > 0 && bounds.height > 0 && bounds.top > rect.top + 10 && (!matchingOnly || !filterReason(data.state,other,data.softened))));
       const presentation = filterPresentation({blocked:!!reason,revealed:item.revealed,allowed:allowedPage(location.hostname,location.pathname),platform:data.platform,automatic:autoSkipEnabled,active:!!data.state.active,canAdvance});
       silenceFlagged(item,presentation === 'skip');
       item.autoSkipping = presentation === 'skip';
@@ -495,11 +550,16 @@
     const focused = document.activeElement;
     const editing = shadow.activeElement === $('#request-frame') || shadow.activeElement?.matches('textarea,select,input:not([type="checkbox"]):not([type="radio"])') || focused?.closest('textarea,select,input:not([type="checkbox"]):not([type="radio"]),[contenteditable="true"],[role="dialog"]');
     const next = findNextVideoControl(document,data.platform);
-    const result = autoSkip.next({key:sessionKey(data.state),enabled:autoSkipEnabled,
+    const result = autoSkip.next({key:sessionKey(data.state),enabled:autoSkipEnabled,matchingOnly:focusedTopic(),
       visible:!document.hidden,paused:panel.ending || saving || !!editing || !allowedPage(location.hostname,location.pathname),height:innerHeight,
       canAdvance:!!next && !next.disabled && next.getBoundingClientRect().width>0,
       items:[...tracked.values()].map(item=>({item,id:item.id,connected:item.video.isConnected,rect:item.video.getBoundingClientRect(),blocked:!!filterReason(data.state,item,data.softened),revealed:item.revealed}))});
     if (!result) return;
+    if (result.noMatch) {
+      const message = 'No matching loaded video. Apply your request or choose Find matching video to search the topic.';
+      if ($('#message').textContent !== message && !$('#message').textContent.startsWith('No readable matching video') && !pendingTopicSearch) announce(message);
+      return;
+    }
     if (result.waiting) return;
     // Never click generic controls or send platform feedback.
     advanceVideo(result,next && !next.disabled && next.getBoundingClientRect().width ? next : null);
@@ -508,7 +568,7 @@
     if (!event.isTrusted || !data?.state.active || !['TikTok','Instagram'].includes(data.platform) || !autoSkipEnabled || panel.ending || saving || document.hidden || !allowedPage(location.hostname,location.pathname)) return;
     if (event.type === 'wheel' ? event.deltaY <= 0 || Math.abs(event.deltaX)>Math.abs(event.deltaY) : event.key !== 'ArrowDown') return;
     if (event.composedPath().includes(host) || document.activeElement?.closest('input,textarea,select,[contenteditable="true"],[role="dialog"]')) return;
-    const target = forwardTarget([...tracked.values()].map(item=>({item,connected:item.video.isConnected,rect:item.video.getBoundingClientRect(),blocked:!!filterReason(data.state,item,data.softened),revealed:item.revealed})),innerHeight);
+    const target = forwardTarget([...tracked.values()].map(item=>({item,connected:item.video.isConnected,rect:item.video.getBoundingClientRect(),blocked:!!filterReason(data.state,item,data.softened),revealed:!focusedTopic() && item.revealed})),innerHeight);
     if (target) {event.preventDefault();event.stopImmediatePropagation();target.video.scrollIntoView({behavior:'instant',block:'center'});}
   }
   document.addEventListener('wheel',preemptForward,{capture:true,passive:false});
@@ -548,11 +608,11 @@
     syncCurrent();
   });
   let lastRoute = location.pathname;
-  await request({type:'get'});render();scan();
+  await request({type:'get'});render();beginTopicResults();scan();tryTopicResults();
   let fastScanTimer = null;
   function scheduleScan() {
     if (fastScanTimer !== null) return;
-    fastScanTimer = setTimeout(() => {fastScanTimer = null;scan();syncCurrent();skipSoftened();},32);
+    fastScanTimer = setTimeout(() => {fastScanTimer = null;scan();syncCurrent();skipSoftened();tryTopicResults();},32);
   }
   new MutationObserver(records => {
     if (records.some(record => !record.target.closest?.('[data-steadier-cover],#steadier-extension') &&
@@ -565,7 +625,7 @@
     polling = true;
     try {
       if (lastRoute !== location.pathname) {lastRoute = location.pathname;render();}
-      scan();syncCurrent();skipSoftened();
+      scan();syncCurrent();skipSoftened();tryTopicResults();
       if (!current || !data.state.active || document.hidden) return;
       const item = current, stored = data.state.active.seen.find(video => video.id === item.id);
       const message = !stored ? {type:'seen',id:item.id,category:item.category,kind:item.analysis.kind}
