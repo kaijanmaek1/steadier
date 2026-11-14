@@ -4,7 +4,9 @@ A local-first prototype for mindful social-media use during recovery from depres
 
 ## Extension (v0.3.4)
 
-Start a session, enter a topic such as `dogs`, then choose **Find videos on TikTok** to apply your request and open TikTok video search. The displayed search query is sent to TikTok; mood scores and session history are not. Search results remain controlled by TikTok and are filtered locally by Steadier. Exclusion-only requests apply local filters without a search query. Dog and cat requests now use separate term families.
+TikTok also offers an explicit **Find videos on TikTok** action that applies the draft request and opens topic search. Only the displayed topic query is sent; mood and history remain local. Dog and cat requests match separate term families.
+
+Version 0.3.4 also includes resizing from every panel edge and corner, saved size/position, white text fields with black text, prompt keyboard isolation, and removal of the topic-correction selector. Focused positive requests now filter all nonmatching videos, including Unknown/unreadable clips. Physics requests recognise a small set of related physics terms. Automatic mode skips nonmatching videos on TikTok and Instagram when a loaded forward video or explicit next control is available. Otherwise it covers and pauses them with Reveal. Prompt typing uses an isolated embedded editor to avoid website capture shortcuts.
 
 TikTok sessions automatically skip videos flagged by your existing filters. Steadier checks already-loaded upcoming posts and advances toward an unflagged post, retrying when navigation stalls. Automatic mode adds no blocking screen or Reveal prompt. Scrolling forward skips loaded flagged posts when an acceptable loaded target is available. Turn off **Automatically skip softened TikTok videos** to use manual covers and Reveal. Refresh the extension and TikTok after updating. This is local navigation, not a change to TikTok's ranking or a guarantee that unflagged videos are positive.
 
@@ -61,3 +63,5 @@ Mood, timing, topic labels, prompts, ratings and video identities stay in local 
 Explicit feedback has more influence than likes. Repeated session mood associations contribute conservatively. The extension adds weak, deduplicated like signals to the basic scoring heuristic. Mood changes do not prove that a video caused them.
 
 This is a recovery-support prototype, not a clinically validated treatment or relapse-prevention system.
+
+

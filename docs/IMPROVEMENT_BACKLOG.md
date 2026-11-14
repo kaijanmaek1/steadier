@@ -4,7 +4,13 @@ Audit date: 2026-11-14. Source: working `steadier/` project, extension v0.3.0 an
 
 | Priority | Finding and desired result | Owner | Status |
 | --- | --- | --- | --- |
-| P2 | TikTok shortcuts steal prompt typing; dog requests match all Animals; requests cannot fetch topic results. Isolate editable keys, keep species specific and add explicit TikTok topic search. | Programming / Project lead | Implemented; eight automated suites passed; live search/keyboard checks pending |
+| P1 | Website capture shortcuts swallow R/C while typing. Isolate prompt keyboard events in an embedded document while preserving drafts and focus. | Interactions | Implemented; eight maintained suites passed; native typing/browser checks pending |
+| P2 | Nonmatching Instagram videos only receive covers. Enable safe automatic next-video navigation and retain a cover fallback where no safe target exists. | Programming / Lead | Implemented; control selection/navigation regressions passed; live Instagram verification pending |
+| P2 | Remove the current-video topic correction selector while retaining feedback. | Interactions / Lead | Implemented; syntax and maintained suites passed; browser verification pending |
+| P1 | Focused prompts let Unknown/unreadable unrelated videos through. Cover every nonmatch, recognise physics concepts without broad Learning matches, and recheck reveals after request changes. | Programming / Lead | Implemented; all maintained suites passed including saved-prompt/future-video regressions; live verification pending |
+| P1 | Prompt spaces can reach platform keyboard shortcuts. Isolate panel keyboard events without cancelling typing defaults. | Interactions | Implemented; production event-isolation regression passed; live capture-handler behaviour unverified |
+| P2 | Resize panel like an app from all edges and corners; keep an accessible keyboard corner grip and save size/position. | Interactions | Implemented; geometry regressions passed; browser verification pending |
+| P2 | Dark website theme makes form controls hard to read. Use explicit light colour scheme, white text fields/dropdowns and black text. | Interactions / Lead | Implemented; syntax and maintained suites passed; browser verification pending |
 | P2 | Flagged TikTok videos require manual scrolling. Add session-scoped automatic advancing, stalled-navigation retries, no-overlay automatic mode and forward-scroll lookahead, an off switch and bounded retry backoff. | Programming / Project lead | Implemented; six automated suites passed; live TikTok verification pending |
 | P1 | GitHub contains top-level files but lacks the `dist/` and `extension/` source directories. Prepare the complete source and team setup in a reviewable branch. | Project lead | Complete source prepared for review; merge pending |
 | P1 | Passive updates and preference actions reset mood confirmation, consent or keyboard focus. Preserve drafts and focus until the user completes/discards the check-in. | Interactions / UX | Implemented; automated checks passed |
@@ -28,3 +34,7 @@ Audit date: 2026-11-14. Source: working `steadier/` project, extension v0.3.0 an
 Before this batch, the two baseline suites passed but missed interaction/session/accessibility regressions. After integration, `node scripts/check.mjs` passed all five regression suites and syntax checks for 16 JavaScript files. All six specialist-role TOML files and the three-worker configuration parsed successfully. Read-only specialist review and lead integration review found and fixed additional mixed-version/session-reset races. See `docs/TESTING.md` for exact evidence limits. Implemented statuses do not imply browser or live-account verification.
 
 The GitHub connection became available during this audit. Root directory inspection confirmed only `.gitignore`, `README.md`, `start.cmd` and `test-engine.mjs` on `main`. The complete source and team setup will be delivered through a draft pull request; it must not be described as merged until a merge is verified.
+
+
+## 0.3.3 feature integration
+All conversation improvements integrated with upstream automatic skipping; six regression suites and 18 syntax checks passed. PR merge and live-platform verification remain pending.

@@ -1,4 +1,28 @@
 // Small, browser-independent state helpers for the extension panel.
+export function isolatePanelKeyboard(target){
+ const stop=event=>event.stopPropagation();
+ for(const type of ['keydown','keypress','keyup'])target.addEventListener(type,stop);
+}
+
+export function clampPanelSize(width,height,viewportWidth,viewportHeight){
+ const maxWidth=Math.max(1,viewportWidth-16),maxHeight=Math.max(1,viewportHeight-16);
+ return {width:Math.max(Math.min(280,maxWidth),Math.min(width,maxWidth)),height:Math.max(Math.min(180,maxHeight),Math.min(height,maxHeight))};
+}
+
+// Resize against the opposite edge rather than moving the whole window.
+export function resizePanelRect(rect,direction,dx,dy,viewportWidth,viewportHeight){
+ const margin=0,maxRight=Math.max(0,viewportWidth),maxBottom=Math.max(0,viewportHeight);
+ const minimum=clampPanelSize(0,0,viewportWidth,viewportHeight);
+ const maximum=clampPanelSize(Infinity,Infinity,viewportWidth,viewportHeight);
+ const clamp=(value,min,max)=>Math.max(min,Math.min(value,max));
+ let left=rect.x,top=rect.y,right=rect.x+rect.width,bottom=rect.y+rect.height;
+ if(direction.includes('w'))left=clamp(left+dx,Math.max(margin,right-maximum.width),right-minimum.width);
+ if(direction.includes('e'))right=clamp(right+dx,left+minimum.width,Math.min(maxRight,left+maximum.width));
+ if(direction.includes('n'))top=clamp(top+dy,Math.max(margin,bottom-maximum.height),bottom-minimum.height);
+ if(direction.includes('s'))bottom=clamp(bottom+dy,top+minimum.height,Math.min(maxBottom,top+maximum.height));
+ return {x:left,y:top,width:right-left,height:bottom-top};
+}
+
 export function createActionQueue(){
  let tail=Promise.resolve();
  return task=>{const result=tail.then(task);tail=result.catch(()=>{});return result;};
@@ -59,3 +83,4 @@ export function createMediaMask(root,overlay){
  function restore(){if(!active)return;active=false;for(const element of [...owned])release(element);}
  refresh();return {refresh,restore};
 }
+

@@ -1,5 +1,37 @@
 import assert from 'node:assert/strict';
-import {createActionQueue,createPanelState,reconcilePanelState,sessionKey,selectCurrent} from './panel-state.mjs';
+import {createActionQueue,createPanelState,reconcilePanelState,sessionKey,selectCurrent,isolatePanelKeyboard,clampPanelSize,resizePanelRect} from './panel-state.mjs';
+
+// Panel keyboard isolation must leave browser typing defaults intact.
+const keyboardTarget=new EventTarget();
+isolatePanelKeyboard(keyboardTarget);
+for(const type of ['keydown','keypress','keyup']){
+ const event=new Event(type,{bubbles:true,cancelable:true});
+ let stopped=false;
+ event.stopPropagation=()=>{stopped=true;};
+ keyboardTarget.dispatchEvent(event);
+ assert.equal(stopped,true);assert.equal(event.defaultPrevented,false);
+}
+assert.deepEqual(clampPanelSize(400,500,1200,900),{width:400,height:500});
+assert.deepEqual(clampPanelSize(2000,2000,800,600),{width:784,height:584});
+assert.deepEqual(clampPanelSize(50,50,800,600),{width:280,height:180});
+assert.deepEqual(clampPanelSize(400,500,240,160),{width:224,height:144});
+
+// Every edge/corner moves only its selected boundaries and anchors opposites.
+const rect={x:200,y:150,width:400,height:300};
+for(const direction of ['n','s','e','w','nw','ne','sw','se']){
+ const result=resizePanelRect(rect,direction,30,20,1200,900);
+ assert.equal(result.x,direction.includes('w')?230:200);
+ assert.equal(result.y,direction.includes('n')?170:150);
+ assert.equal(result.x+result.width,direction.includes('e')?630:600);
+ assert.equal(result.y+result.height,direction.includes('s')?470:450);
+}
+assert.deepEqual(resizePanelRect(rect,'nw',1000,1000,1200,900),{x:320,y:270,width:280,height:180});
+assert.deepEqual(resizePanelRect(rect,'nw',-1000,-1000,1200,900),{x:0,y:0,width:600,height:450});
+assert.deepEqual(resizePanelRect(rect,'se',1000,1000,1200,900),{x:200,y:150,width:1000,height:750});
+assert.deepEqual(resizePanelRect(rect,'se',-1000,-1000,1200,900),{x:200,y:150,width:280,height:180});
+assert.deepEqual(resizePanelRect({x:8,y:8,width:224,height:144},'nw',100,100,240,160),{x:8,y:8,width:224,height:144});
+assert.deepEqual(resizePanelRect({x:0,y:0,width:280,height:180},'nw',1000,1000,1200,900),{x:0,y:0,width:280,height:180});
+assert.deepEqual(resizePanelRect({x:0,y:0,width:280,height:180},'se',2000,2000,1200,900),{x:0,y:0,width:1184,height:884});
 
 // Same-session storage updates/preferences must not erase a confirmed mood,
 // checkbox consent, unfinished request, or end-session reflection.
@@ -56,3 +88,4 @@ await Promise.resolve();assert.deepEqual(events,['first started']);
 release();await caught;assert.equal(await second,'saved');assert.equal(successCleanup,false);
 assert.ok(events.indexOf('second saved')>events.indexOf('first started'));
 console.log('Passed: confirmed form preservation, cross-tab session transitions, idle reset privacy, current-video selection, queued actions and failure recovery.');
+

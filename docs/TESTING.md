@@ -18,10 +18,6 @@ The runner validates extension resource paths, syntax-checks JavaScript modules 
 | `extension/test-interactions.mjs` | Panel state preservation/reset, queued-action outcomes and eligible current-video selection using production helpers |
 | `extension/test-accessibility.mjs` | Production media-mask attribute ownership/restoration on DOM-shaped fixtures and secondary-text contrast calculated from source colours |
 | `extension/test-auto-skip.mjs` | Loaded-post lookahead, reveal priority, session/visibility/pause gates, navigation cooldown, stalled-navigation retries, missing-next handling and bounded retry backoff |
-| `extension/test-keyboard.mjs` | Production keyboard guard isolates editable panel keys while retaining native defaults, Tab/composition and drag-handle keys |
-| `extension/test-specific-intent.mjs` | Dog/cat term families, persisted prompt reinterpretation, positive search query construction and exclusion-only/context handling |
-
-Version 0.3.4 still needs live keyboard and search verification: refresh the page after extension reload, type `c r dogs` with spaces into the request, use Tab and an IME, start a session and choose Find videos on TikTok. Confirm the displayed query is used, exclusion-only drafts do not search, and mood/session metadata is absent from the destination URL. Automated fixtures do not establish TikTok's current URL routing, result relevance or live keyboard behaviour.
 
 Automatic TikTok skipping requires a live browser check: reload the extension and TikTok, start a session, soften a matching topic, and verify no blocking overlays, forward-scroll lookahead, reversible muting, advancement, the off switch, Reveal with skipping off, and automatic retry after a bounded batch of advances. Check stopping at session end and while editing a request. These live checks have not been performed for this change.
 
@@ -59,3 +55,23 @@ Run the following on **both TikTok web and Instagram web**, using the intended s
 14. **Private routes:** visit direct messages, account/settings and login routes. Recording/filtering should be paused; existing session data must not grow from activity on those screens.
 
 The demo additionally needs a browser pass for its first-session flow, insights, preferences, mobile layout, export and deletion. Its history is intentionally separate from the extension.
+
+
+## Panel simplification and resizing follow-up
+
+All five maintained suites and 16 JavaScript syntax checks passed after removing topic correction, isolating panel keyboard events and adding pointer/keyboard resizing. EventTarget regressions check propagation and preserved defaults; size helper regressions cover normal, oversized, undersized and small-viewport dimensions. Native text insertion, pointer capture, collapse/expand layout, saved-size restoration and platform capture-phase keyboard handlers still require browser validation. No new live-account tests were performed.
+
+## App-style resize and light controls follow-up
+
+All five maintained suites and 16 syntax checks passed. Production geometry regressions cover all eight resize directions, opposite-edge anchoring, minimum/maximum dimensions, small viewports and panels flush with viewport boundaries. The large Resize button is replaced by edge/corner targets outside the scroll area, with a keyboard-accessible southeast grip. Explicit light colour scheme and white/black field styling are implemented. Browser pointer behaviour, computed control colours, persistence and native focus remain unverified; no live-account testing was performed.
+
+## Focused prompt filtering follow-up
+
+All five maintained suites, 16 syntax checks and manifest checks passed. Runtime policy and mocked service-worker regressions cover the exact physics request, a sequence of matching/nonmatching future items including Unknown and empty evidence, narrow physics vocabulary, exclusion precedence, request changes and explicit focused:false. Focused positive prompts now cover all nonmatches; empty/exclusion-only prompts retain their previous behaviour. The content script also clears in-memory Reveal exceptions when active intent changes. Actual site detection, cover timing, cross-tab Reveal reset and audiovisual relevance remain unverified on live platforms. Filtering is local text-based covering/pausing, not recommendation retraining or content fetching.
+
+## GitHub 0.3.3 integration
+Integrated upstream automatic TikTok skipping with edge/corner resizing, light fields, keyboard isolation, correction removal and focused prompt filtering. Six maintained regression suites and 18 JavaScript syntax checks passed. Automatic TikTok mode skips nonmatching videos; Instagram/manual mode uses covers. No live browser or signed-in platform testing was performed.
+
+## Prompt shortcut and cross-platform skip follow-up
+Integrated upstream 0.3.4 species matching, explicit TikTok search and keyboard helper. Prompt input now uses a scriptless embedded textarea document to isolate keystrokes from parent website capture handlers, with draft/caret restoration. Automatic skipping runs for both platforms, uses explicit visible Next controls on Instagram reel routes or loaded forward targets, and falls back to a paused cover when no safe navigation exists. No home-feed carousel control is clicked. All eight maintained suites and 21 syntax checks passed, including control-selection fixtures and physics-filter-to-navigation sequences. Native R/C typing, iframe focus/Tab/IME, page CSP compatibility and live Instagram navigation remain unverified.
+
