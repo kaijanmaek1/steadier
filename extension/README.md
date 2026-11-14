@@ -2,6 +2,14 @@
 
 An experimental Chrome/Edge Manifest V3 extension. It overlays mood check-ins and softens selected videos on the actual websites. It does not change either platform's recommendation engine or run inside the native mobile apps.
 
+## Version 0.3.5: prompt matching fixes
+
+With **Soften topics outside my request** enabled, a specific topic request now softens videos that have no matching readable evidence, including videos labelled Unknown. A video does not match a wanted topic just because that topic appears in its comments. Comments remain available for exclusions and style estimates. Common dog/cat topic hashtags such as `#dogsoftiktok` are recognised without treating unrelated words as a match.
+
+Caption lookup can reach bounded single-video ancestor containers; offscreen scoped metadata and display-contents wrappers can be read without collecting genuinely hidden text. Steadier's own accessibility masks do not erase classification evidence. These are structural fixture fixes, not proof of compatibility with every live layout.
+
+When editing a request during a session, the interpretation says **Draft** until you click **Apply request**. Before a session it says the request will apply on session start. Reload the extension and refresh all social-site tabs after updating. This is still local English text matching, not audiovisual understanding or a replacement recommendation feed; topic filtering may cover all loaded videos if none have readable matching text. Turn off topic filtering or use Reveal to broaden the feed.
+
 ## Version 0.3.4: prompt typing and topic search
 
 Start a session and enter a request, then choose **Find videos on TikTok**. Steadier applies the draft filters before opening TikTok video search for the positive topic query shown in the panel. Only that query is sent to TikTok, not mood scores or session history. Exclusions stay local and exclusion-only requests do not start a search. Ordinary Start/Apply actions do not navigate. Dog/puppy and cat/kitten requests are matched separately rather than accepting all Animals.

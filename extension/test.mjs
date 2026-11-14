@@ -14,7 +14,7 @@ const policy={preferences:{},active:{intent:{plan,mode:'memes',focused:true,stri
 assert.ok(filterReason(policy,{category:'News',analysis:{kind:'Meme / humour'}}));
 assert.equal(filterReason(policy,{category:'Nature',analysis:{kind:'Meme / humour'}}),'');
 assert.ok(filterReason(policy,{category:'Nature',analysis:{kind:'Informational style'}}));
-assert.equal(filterReason(policy,{category:'Unknown',analysis:{kind:'Unknown'}}),'');
+assert.ok(filterReason(policy,{category:'Unknown',analysis:{kind:'Unknown'}}),'Focused requests must not silently pass unreadable/unmatched videos');
 policy.active.intent.strict=true;assert.ok(filterReason(policy,{category:'Unknown',analysis:{kind:'Unknown'}}));
 assert.equal(filterReason({preferences:{},active:null},{category:'News'}),'');
 const button=(attrs={},svgs=[])=>({getAttribute:k=>attrs[k]??null,matches:()=>false,querySelector:()=>null,querySelectorAll:()=>svgs.map(label=>({getAttribute:()=>label}))});
