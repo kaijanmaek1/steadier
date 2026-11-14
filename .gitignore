@@ -1,0 +1,14 @@
+# Local hosting configuration and credentials
+.openai/
+.env
+.env.*
+!.env.example
+
+# Dependencies and local files
+node_modules/
+*.log
+.DS_Store
+Thumbs.db
+
+# Generated extension archive (source is in extension/)
+steadier-extension.zip
