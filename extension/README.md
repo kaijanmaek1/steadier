@@ -34,6 +34,12 @@ Existing history is retained and added category preferences default to Adaptive.
 - Text burned into a video image is **not supported** in this version. Reading those pixels requires an OCR pipeline; extracting speech requires transcription. DOM subtitle text and exposed text tracks are supported where available.
 - These features remain available in the current release. Follow the latest update instructions above.
 
+## Automatic TikTok skipping
+
+During an active TikTok session, **Automatically skip softened TikTok videos** advances past videos flagged by your topic, style and request settings. Already-loaded upcoming posts are checked locally; Steadier jumps to the next loaded unflagged post when available, otherwise it tries the site's next-video control. It cannot inspect an unseen feed or reorder TikTok recommendations. Turn the option off to use covers and Reveal instead.
+
+Automatic navigation retries stalled advances and waits briefly between bounded batches rather than switching itself off. In automatic mode, flagged posts show a temporary skipping cover without a Reveal button; turn skipping off to reveal manually. An unflagged video is not guaranteed to be positive or beneficial: the text rules can miss distressing content. OCR, speech and visual-action analysis remain unsupported. Instagram retains cover-and-reveal behaviour.
+
 ## Install locally
 
 1. Open `chrome://extensions` (Chrome) or `edge://extensions` (Edge).
@@ -50,7 +56,7 @@ To test filtering immediately, set Nature or another matching category to **Soft
 
 - This uses weighted keyword and phrase rules across captions, hashtags, subtitle text and loaded comments, not audiovisual AI. Visual content, speech, sarcasm, multilingual content and posts without meaningful text may be missed or misclassified. Correct the topic manually in the panel. Do not rely on this extension to block all distressing content.
 - TikTok and Instagram change their page structure. Video container detection is a best-effort adapter. Reel pages without article containers may expose less reliable captions/identities. Some covers may appear only after content first loads. Inspect behaviour on your account before relying on it.
-- Does not automatically like, dislike, follow, skip videos or send “Not interested” feedback. Website ranking remains controlled by the platform. Covering a video locally may still contribute platform impressions.
+- Does not automatically like, dislike, follow or send “Not interested” feedback. Website ranking remains controlled by the platform. Covering a video locally may still contribute platform impressions.
 - Excludes Instagram direct messages/account screens and TikTok messages/inbox/login/settings. It does not request passwords, cookies, microphone access, browsing history or access to other websites.
 - Processes nearby rendered text locally but stores only video identity (post path, or a non-cryptographic text hash as a fallback), category, mood, timing and explicit ratings. Raw captions are not saved. Hashes are identifiers, not encryption; repeated captions may be treated as the same video. Nothing is sent to a Steadier server. Platform sites continue their own normal tracking.
 - History is separate from the demo app, and separated by platform. Multiple tabs on one platform share an active session. Use the extension panel to export or delete that platform's data. Removing the extension removes extension storage.

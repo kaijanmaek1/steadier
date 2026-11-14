@@ -1,6 +1,7 @@
 ﻿(async () => {
   const {analyse, allowedPage, clampPosition} = await import(chrome.runtime.getURL('classify.mjs'));
   const {extract} = await import(chrome.runtime.getURL('extract.mjs'));
+  const {createAutoSkip,advanceVideo} = await import(chrome.runtime.getURL('auto-skip.mjs'));
   const {aliases, parseIntent, filterReason, summariseIntent} = await import(chrome.runtime.getURL('intent.mjs'));
   const {likeButtons, buttonLikeState} = await import(chrome.runtime.getURL('likes.mjs'));
   const {createActionQueue, createPanelState, reconcilePanelState, sessionKey, selectCurrent, createMediaMask} = await import(chrome.runtime.getURL('panel-state.mjs'));
@@ -34,6 +35,8 @@
   const requestQueue = createActionQueue(), actionQueue = createActionQueue();
   let data = null, current = null, minimised = false, saving = false, polling = false;
   let position = null, drag = null;
+  const autoSkip = createAutoSkip();
+  let autoSkipEnabled = true;
 
   function announce(message, error = false) {
     $('#message').textContent = message;
@@ -46,6 +49,7 @@
     return captured;
   }
   function resetTrackedSession(next) {
+    autoSkip.reset(sessionKey(next));
     current = null;
     for (const item of tracked.values()) {
       const stored = next.active?.seen.find(video => video.id === item.id);
@@ -143,6 +147,13 @@
     $('#body').innerHTML = `<p>${data.platform} web / text and comment estimates</p>${!active || panel.ending ? moodForm : `<p id="session-status" tabindex="-1">Session active / starting mood <b>${state.active.before}/100</b><br><span id="view-count">${state.active.seen.length}</span> videos viewed / <span id="likes-count">${Object.keys(state.likes || {}).length}</span> learned likes</p><div id="current"></div><button id="end" class="primary">End session & check mood</button><p><small>Use End session before leaving. An interrupted session resumes when you return.</small></p>`}${active && !panel.ending ? `<details id="session-request"><summary>Change my session request</summary>${intentForm()}<button id="apply-intent" class="primary">Apply request</button></details>` : ''}<details id="preferences"><summary>Feed preferences</summary>${categories.map(category => `<div class="row pref"><label for="pref-${category}">${category}</label><select id="pref-${category}" data-pref="${category}">${[['adaptive','Adaptive'],['show','Always show'],['hide','Soften']].map(([value,label]) => `<option value="${value}" ${state.preferences[category] === value ? 'selected' : ''}>${label}</option>`).join('')}</select></div>`).join('')}<small>Filters apply during an active session. Unknown topics stay visible unless you choose to soften uncertain videos. Always show bypasses learned filtering; session requests can still soften a topic.</small></details><details id="history"><summary>History & privacy (${state.sessions.length} sessions)</summary><p>${last ? `Last session: ${last.before} to ${last.after} (${last.after-last.before >= 0 ? '+' : ''}${last.after-last.before} points)` : 'No completed sessions yet.'}</p><p>Data stays in extension storage. TikTok and Instagram have separate histories, separate from the demo website.</p><button id="export">Export data</button> <button id="delete">Delete data</button><div id="confirm">${panel.confirmDelete ? '<p>Delete this platform\'s history, saved prompts, preferences and active session?</p><button id="cancel-delete">Cancel</button> <button id="yes">Delete permanently</button>' : ''}</div><p>Reads available captions, hashtags, subtitle text and visible comments. Does not fact-check claims or read text burned into video images. Does not change platform recommendations directly.</p></details>`;
     for (const details of shadow.querySelectorAll('details')) if (openDetails.has(details.id)) details.open = true;
     bindForms();renderCurrent({force:true});restoreFocus(snapshot,focusId);updateBusyControls();
+    if (active && !panel.ending && data.platform === 'TikTok') {
+      const label = document.createElement('label');label.className = 'checkbox';
+      const toggle = document.createElement('input');toggle.type = 'checkbox';toggle.id = 'auto-skip';toggle.checked = autoSkipEnabled;
+      label.append(toggle,document.createTextNode('Automatically skip softened TikTok videos'));
+      $('#session-status').after(label);
+      toggle.onchange = () => {autoSkipEnabled = toggle.checked;autoSkip.reset(sessionKey(data.state));applyFilters();skipSoftened();announce(autoSkipEnabled ? 'Automatic skipping enabled.' : 'Automatic skipping paused. Reveal controls remain available.');};
+    }
   }
   function bindForms() {
     if ($('#mood')) {
@@ -200,7 +211,7 @@
     }
     const item = current;
     container.dataset.videoId = item?.id || '';
-    if (!item) {container.innerHTML = '<h3 id="current-heading" tabindex="-1">No current video</h3><p>Keep a video in view for two seconds. If it is covered, use Reveal video to inspect or correct its topic.</p>';return;}
+    if (!item) {container.innerHTML = `<h3 id="current-heading" tabindex="-1">No current video</h3><p>Keep a video in view for two seconds. ${data.platform === 'TikTok' && autoSkipEnabled ? 'Softened videos are skipped automatically. Turn off automatic skipping to reveal or correct one.' : 'If it is covered, use Reveal video to inspect or correct its topic.'}</p>`;return;}
     const originSession = sessionKey(data.state), vote = data.state.active?.feedback[item.id];
     container.innerHTML = `<h3 id="current-heading" tabindex="-1">Current video topic</h3><label for="category">Correct the estimated topic</label><select id="category">${['Unknown',...categories].map(category => `<option ${category === item.category ? 'selected' : ''}>${category}</option>`).join('')}</select><p><small>${escape(item.analysis.kind)} / ${escape(item.analysis.confidence)} confidence<br>${escape(item.analysis.verification)}<br>Sources: ${escape(item.analysis.sources.join(', ') || 'No readable text')}<br>${item.analysis.commentCount} loaded comments read in display order.</small></p><p><small>Open comments to include them. Estimates can be wrong.</small></p><div class="row"><button id="helpful" aria-pressed="${vote === 1}">Helpful</button><button id="unhelpful" aria-pressed="${vote === -1}">Unhelpful</button></div><p id="video-update-note" role="status" aria-live="polite"></p>`;
     $('#category').onchange = event => {
@@ -339,6 +350,7 @@
       if (item.cover && !item.cover.isConnected) removeCover(item);
       if (!item.cover) {
         const cover = document.createElement('div');
+        cover.dataset.steadierCover = '';
         cover.style.cssText = 'position:absolute;inset:0;z-index:2147483646;background:#edf2e8;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#365c43;font:14px system-ui;text-align:center;padding:20px';
         cover.setAttribute('role','group');cover.setAttribute('aria-label','Video softened by Steadier');
         const label = document.createElement('p');label.dataset.steadierReason = '';
@@ -352,11 +364,18 @@
         if (previousFocus && item.root.contains(previousFocus) && !cover.contains(previousFocus)) {item.preCoverFocus = previousFocus;reveal.focus({preventScroll:true});}
         item.mask = createMediaMask(item.root,cover);
       }
-      item.cover.querySelector('[data-steadier-reason]').textContent = `Steadier: ${reason}`;
+      const automatic = data.platform === 'TikTok' && autoSkipEnabled && !!data.state.active && !panel.ending;
+      const label = item.cover.querySelector('[data-steadier-reason]');
+      const message = automatic ? 'Steadier: skipping this video… Turn off automatic skipping in the panel to reveal it.' : `Steadier: ${reason}`;
+      if (label.textContent !== message) label.textContent = message;
+      const revealButton = item.cover.querySelector('button');
+      if (automatic && document.activeElement === revealButton) {item.cover.tabIndex = -1;item.cover.focus({preventScroll:true});}
+      revealButton.hidden = automatic;
       const focus = document.activeElement;
       if (focus && item.root.contains(focus) && !item.cover.contains(focus)) {
         if (!item.preCoverFocus) item.preCoverFocus = focus;
-        item.cover.querySelector('button').focus({preventScroll:true});
+        if (automatic) {item.cover.tabIndex = -1;item.cover.focus({preventScroll:true});}
+        else item.cover.querySelector('button').focus({preventScroll:true});
       }
       item.mask.refresh();item.video.pause();
     }
@@ -367,6 +386,22 @@
   function readLike(item) {
     const values = likeButtons(item.root,data.platform).map(button => buttonLikeState(button,data.platform)).filter(value => value !== null);
     return values.length ? values[0] : null;
+  }
+  function skipSoftened() {
+    if (!data || data.platform !== 'TikTok') return;
+    const focused = document.activeElement;
+    const editing = shadow.activeElement?.matches('textarea,select,input:not([type="checkbox"]):not([type="radio"])') || focused?.closest('textarea,select,input:not([type="checkbox"]):not([type="radio"]),[contenteditable="true"],[role="dialog"]');
+    const next = [...document.querySelectorAll('button[data-e2e="arrow-right"],button[data-e2e="arrow-down"]')]
+      .find(button => !button.disabled && button.getBoundingClientRect().width>0 && button.getBoundingClientRect().height>0);
+    const result = autoSkip.next({key:sessionKey(data.state),enabled:autoSkipEnabled,
+      visible:!document.hidden,paused:panel.ending || saving || !!editing || !allowedPage(location.hostname,location.pathname),height:innerHeight,
+      canAdvance:!!next && !next.disabled && next.getBoundingClientRect().width>0,
+      items:[...tracked.values()].map(item=>({item,id:item.id,connected:item.video.isConnected,rect:item.video.getBoundingClientRect(),blocked:!!filterReason(data.state,item,data.softened),revealed:item.revealed}))});
+    if (!result) return;
+    if (result.waiting) {announce('Still looking for another video. Retrying shortly.');return;}
+    // Never click generic controls or send platform feedback.
+    advanceVideo(result,next && !next.disabled && next.getBoundingClientRect().width ? next : null);
+    announce('Skipping softened content. Estimates can be wrong.');
   }
   function watchLike(event) {
     if (!event.isTrusted || !data?.state.active || !allowedPage(location.hostname,location.pathname)) return;
@@ -396,7 +431,7 @@
       item.inView = entry.isIntersecting && entry.intersectionRatio >= .5;
       item.since = item.inView && !document.hidden ? Date.now() : 0;
     }
-    syncCurrent();
+    syncCurrent();skipSoftened();
   },{threshold:[0,.5]});
   document.addEventListener('visibilitychange',() => {
     for (const item of tracked.values()) item.since = !document.hidden && item.inView ? Date.now() : 0;
@@ -404,12 +439,23 @@
   });
   let lastRoute = location.pathname;
   await request({type:'get'});render();scan();
+  let fastScanTimer = null;
+  function scheduleScan() {
+    if (fastScanTimer !== null) return;
+    fastScanTimer = setTimeout(() => {fastScanTimer = null;scan();syncCurrent();skipSoftened();},100);
+  }
+  new MutationObserver(records => {
+    if (records.some(record => !record.target.closest?.('[data-steadier-cover],#steadier-extension') &&
+      [...record.addedNodes,...record.removedNodes].some(node => node.nodeType !== 1 || !node.matches?.('[data-steadier-cover],#steadier-extension')))) scheduleScan();
+  }).observe(document.documentElement,{childList:true,subtree:true});
+  document.addEventListener('scroll',scheduleScan,{capture:true,passive:true});
+  setInterval(skipSoftened,350);
   setInterval(async () => {
     if (polling) return;
     polling = true;
     try {
       if (lastRoute !== location.pathname) {lastRoute = location.pathname;render();}
-      scan();syncCurrent();
+      scan();syncCurrent();skipSoftened();
       if (!current || !data.state.active || document.hidden) return;
       const item = current, stored = data.state.active.seen.find(video => video.id === item.id);
       const message = !stored ? {type:'seen',id:item.id,category:item.category,kind:item.analysis.kind}

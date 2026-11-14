@@ -2,7 +2,9 @@
 
 A local-first prototype for mindful social-media use during recovery from depression. Includes a standalone demo and an experimental Edge/Chrome extension for TikTok and Instagram websites.
 
-## Extension (v0.3.1)
+## Extension (v0.3.2)
+
+TikTok sessions automatically skip videos flagged by your existing filters. Steadier checks already-loaded upcoming posts and advances toward an unflagged post, retrying when navigation stalls. Turn off **Automatically skip softened TikTok videos** to use manual covers and Reveal. Refresh the extension and TikTok after updating. This is local navigation, not a change to TikTok's ranking or a guarantee that unflagged videos are positive.
 
 1. Open edge://extensions or chrome://extensions and enable Developer mode.
 2. Choose Load unpacked and select the extension directory.
