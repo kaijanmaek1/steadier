@@ -1,7 +1,27 @@
 // Navigation policy only: classifications are estimates, never a mood guarantee.
-export function filterPresentation({blocked,revealed,allowed=true,platform,automatic,active}) {
+export function filterPresentation({blocked,revealed,allowed=true,platform,automatic,active,canAdvance=true}) {
   if(!allowed || !blocked || revealed) return 'show';
-  return platform==='TikTok' && automatic && active ? 'skip' : 'cover';
+  return ['TikTok','Instagram'].includes(platform) && automatic && active && canAdvance ? 'skip' : 'cover';
+}
+// Only explicit feed navigation controls are eligible. Instagram carousel
+// arrows on the home feed are not reel navigation and must never be clicked.
+export function findNextVideoControl(document,platform) {
+  if(!['TikTok','Instagram'].includes(platform)) return null;
+  if(platform==='Instagram' && !/^\/reels?\//.test(document.location?.pathname||'')) return null;
+  const selector=platform==='TikTok' ? 'button[data-e2e="arrow-right"],button[data-e2e="arrow-down"]' : 'button,[role="button"]';
+  for(const button of document.querySelectorAll(selector)) {
+    const rect=button.getBoundingClientRect();
+    if(button.disabled || button.hidden || button.getAttribute('aria-disabled')==='true' || rect.width<=0 || rect.height<=0) continue;
+    const style=document.defaultView?.getComputedStyle(button);
+    if(style && (style.visibility==='hidden' || style.display==='none')) continue;
+    if(platform==='Instagram') {
+      const icon=button.querySelector('svg');
+      const labels=[button.getAttribute('aria-label'),button.getAttribute('title'),icon?.getAttribute('aria-label'),icon?.querySelector('title')?.textContent];
+      if(!labels.some(label=>/^(?:next(?: reel| video)?|go to next(?: reel| video)?)$/i.test(label?.trim()||''))) continue;
+    }
+    return button;
+  }
+  return null;
 }
 export function silenceFlagged(item,enabled) {
   if(enabled) {
@@ -61,3 +81,5 @@ export function createAutoSkip({limit=10,cooldown=700,backoff=5000}={}) {
   }
   return {next,reset};
 }
+
+

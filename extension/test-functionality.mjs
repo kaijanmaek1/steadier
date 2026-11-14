@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {parseIntent,filterReason} from './intent.mjs';
+import {parseIntent,filterReason,positiveSearchQuery} from './intent.mjs';
 
 const policy=(prompt,extra={})=>({preferences:{},active:{intent:{plan:parseIntent(prompt),mode:'both',focused:true,strict:false,...extra}}});
 const item=(category,text,kind='Unknown')=>({category,matchText:text,analysis:{kind}});
@@ -11,6 +11,39 @@ assert.equal(filterReason(policy('no politics'),item('Nature','a forest walk')),
 assert.equal(filterReason(policy('no politics'),item('Nature','a politicality word')),'');
 assert.equal(filterReason(policy('nature'),item('Learning','forest science tutorial')),'');
 assert.ok(filterReason(policy('nature'),item('Learning','a science tutorial')));
+
+// Positive focused requests gate every newly encountered video, including
+// unclassified or unreadable content, without widening physics to all Learning.
+const physicsPrompt='i want to see physics content';
+assert.deepEqual(parseIntent(physicsPrompt).includeTerms,['physics']);
+assert.equal(positiveSearchQuery(physicsPrompt),'physics');
+const physicsPolicy=policy(physicsPrompt);
+const storedPhysics={preferences:{},active:{intent:{prompt:physicsPrompt,plan:parseIntent('science'),focused:true,mode:'both'}}};
+assert.equal(filterReason(storedPhysics,item('Unknown','quantum mechanics')),'','persisted prompt is reparsed with physics vocabulary');
+assert.ok(filterReason(storedPhysics,item('Learning','history science tutorial')),'stale broad Learning plan cannot override the current physics prompt');
+const futureFeed=[
+ item('Unknown','Physics explained'),
+ item('Learning','Quantum mechanics explained'),
+ item('Unknown','Gravity and gravitational waves'),
+ item('Learning','A history tutorial'),
+ item('Nature','Forest walk'),
+ item('Unknown','Lip sync dance'),
+ item('Unknown',''),
+ item('Learning','Energy for your workout'),
+ item('Learning','Car mechanics tutorial'),
+ item('Unknown','physically fit')
+];
+assert.deepEqual(futureFeed.map(video=>!!filterReason(physicsPolicy,video)),[false,false,false,true,true,true,true,true,true,true]);
+assert.ok(filterReason({...physicsPolicy,preferences:{Unknown:'show'}},item('Unknown','unrelated dance')),'Always show cannot bypass the positive prompt');
+assert.ok(filterReason(physicsPolicy,item('Unknown','quantum mechanics politics'))==='','Matching prompt works independently of dominant category');
+assert.ok(filterReason(policy('physics, no politics'),item('Unknown','quantum mechanics politics')),'Explicit exclusions still win');
+assert.ok(filterReason(policy('no physics'),item('Unknown','quantum mechanics')));
+for(const prompt of ['', 'no politics'])assert.equal(filterReason(policy(prompt),item('Unknown','dance')),'');
+assert.equal(filterReason(policy(physicsPrompt,{focused:false}),item('Unknown','dance')),'');
+assert.equal(filterReason(policy(physicsPrompt,{focused:false}),item('Nature','forest')),'');
+const changedPolicy=policy('dogs');
+assert.ok(filterReason(changedPolicy,futureFeed[0]));
+assert.equal(filterReason(changedPolicy,item('Animals','dogs playing')),'');
 
 // Negation applies to lists until an explicit positive instruction or "but".
 assert.ok(parseIntent('I want not politics').exclude.includes('News'));
@@ -39,6 +72,18 @@ const call=(message,from=sender)=>new Promise(resolve=>handler(message,from,reso
 const start=()=>call({type:'start',protocol:2,consent:true,mood:50});
 let result=await start();
 const first=result.state.active.sessionId;assert.match(first,/^[0-9a-f-]{36}$/i);
+// Exercise service-worker parsing/defaults and the actual policy against a
+// sequence of future videos, then verify an applied request changes that policy.
+result=await call({type:'intent',sessionId:first,intent:{prompt:physicsPrompt}});
+assert.equal(result.state.active.intent.focused,true);
+assert.equal(result.state.active.intent.strict,false);
+assert.deepEqual(futureFeed.map(video=>!!filterReason(result.state,video)),[false,false,false,true,true,true,true,true,true,true]);
+result=await call({type:'intent',sessionId:first,intent:{prompt:'dogs'}});
+assert.ok(filterReason(result.state,futureFeed[0]));
+assert.equal(filterReason(result.state,item('Animals','dogs playing')),'');
+result=await call({type:'intent',sessionId:first,intent:{prompt:physicsPrompt,focused:false}});
+assert.equal(filterReason(result.state,item('Unknown','dance')),'');
+await call({type:'intent',sessionId:first,intent:{prompt:''}});
 assert.ok((await call({type:'seen',id:'video',category:'Nature'})).error);
 assert.equal((await call({type:'get'})).state.active.seen.length,0);
 await call({type:'seen',id:'video',category:'Nature',sessionId:first});
@@ -91,3 +136,4 @@ assert.ok(!(await call({type:'preference',category:'News',value:'hide',resetEpoc
 result=await call({type:'start',protocol:2,consent:true,mood:40,resetEpoch:newEpoch});assert.ok(result.state.active.sessionId);
 assert.ok(!(await call({type:'reset',resetEpoch:newEpoch})).error);
 console.log('Passed: mixed-topic exclusions, negation lists, mixed style, strict uncertainty, protocol-2 stale-session protection, private-route exclusion, identity bounds and legacy compatibility.');
+

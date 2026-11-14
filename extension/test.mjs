@@ -14,7 +14,7 @@ const policy={preferences:{},active:{intent:{plan,mode:'memes',focused:true,stri
 assert.ok(filterReason(policy,{category:'News',analysis:{kind:'Meme / humour'}}));
 assert.equal(filterReason(policy,{category:'Nature',analysis:{kind:'Meme / humour'}}),'');
 assert.ok(filterReason(policy,{category:'Nature',analysis:{kind:'Informational style'}}));
-assert.equal(filterReason(policy,{category:'Unknown',analysis:{kind:'Unknown'}}),'');
+assert.equal(filterReason(policy,{category:'Unknown',analysis:{kind:'Unknown'}}),'Outside your requested topics');
 policy.active.intent.strict=true;assert.ok(filterReason(policy,{category:'Unknown',analysis:{kind:'Unknown'}}));
 assert.equal(filterReason({preferences:{},active:null},{category:'News'}),'');
 const button=(attrs={},svgs=[])=>({getAttribute:k=>attrs[k]??null,matches:()=>false,querySelector:()=>null,querySelectorAll:()=>svgs.map(label=>({getAttribute:()=>label}))});
@@ -81,3 +81,4 @@ await call({type:'start',mood:50,consent:true});await call({type:'intent',intent
 assert.ok((await call({type:'intent',intent:{prompt:'x'.repeat(501)}})).error);
 await call({type:'reset'});assert.equal((await call({type:'get'})).state.likes,undefined);
 console.log('Passed: caption rules, excluded routes, consent, session validation, concurrent events, learning, overrides, platform isolation, sender checks and deletion.');
+

@@ -1,15 +1,40 @@
 import assert from 'node:assert/strict';
-import {createAutoSkip,advanceVideo,filterPresentation,silenceFlagged,forwardTarget} from './auto-skip.mjs';
+import {createAutoSkip,advanceVideo,filterPresentation,silenceFlagged,forwardTarget,findNextVideoControl} from './auto-skip.mjs';
 import {selectCurrent} from './panel-state.mjs';
+import {parseIntent,filterReason} from './intent.mjs';
 const video=(id,top,blocked=true,extra={})=>({id,item:{id},connected:true,rect:{top,bottom:top+800,width:450,height:800},blocked,...extra});
 const policy=createAutoSkip();
 const input={key:'one',enabled:true,height:800,now:0,items:[video('bad',0),video('bad-next',800),video('allowed',1600,false)]};
 const mode={blocked:true,platform:'TikTok',automatic:true,active:true};
 assert.equal(filterPresentation(mode),'skip','automatic TikTok never enters the cover/Reveal rendering branch');
 assert.equal(filterPresentation({...mode,automatic:false}),'cover','manual mode retains Reveal overlay');
-assert.equal(filterPresentation({...mode,platform:'Instagram'}),'cover');
+assert.equal(filterPresentation({...mode,platform:'Instagram'}),'skip');
+assert.equal(filterPresentation({...mode,platform:'Instagram',canAdvance:false}),'cover','no safe navigation retains a paused cover rather than displaying blocked content');
+assert.equal(filterPresentation({...mode,platform:'Other'}),'cover');
 assert.equal(filterPresentation({...mode,active:false,blocked:false}),'show');
 assert.equal(filterPresentation({...mode,revealed:true}),'show');
+// Real control selection rejects disabled/hidden and non-reel carousel arrows.
+const control=(label,extra={})=>({disabled:false,hidden:false,getBoundingClientRect:()=>({width:44,height:44}),getAttribute:name=>name==='aria-label'?label:null,querySelector:()=>null,...extra});
+const hidden=control('Next',{getBoundingClientRect:()=>({width:0,height:0})});
+const disabled=control('Next',{disabled:true});
+const wrong=control('Next photo');
+const reel=control('Next reel');
+const fixture=(pathname,buttons)=>({location:{pathname},querySelectorAll:()=>buttons});
+assert.equal(findNextVideoControl(fixture('/reels/test/',[wrong,hidden,disabled,reel]),'Instagram'),reel);
+assert.equal(findNextVideoControl(fixture('/',[reel]),'Instagram'),null,'home carousel Next cannot advance the feed');
+assert.equal(findNextVideoControl(fixture('/p/test/',[reel]),'Instagram'),null);
+const svg=control(null,{querySelector:()=>({getAttribute:()=>null,querySelector:()=>({textContent:'Next'})})});
+assert.equal(findNextVideoControl(fixture('/reels/test/',[svg]),'Instagram'),svg,'Instagram SVG title navigation');
+assert.equal(findNextVideoControl(fixture('/foryou',[disabled,reel]),'TikTok'),reel);
+assert.equal(findNextVideoControl(fixture('/reels/test/',[control('Previous reel')]),'Instagram'),null);
+// The saved focused prompt drives the same future-item navigation on either
+// platform: skip known-unrelated and unreadable posts towards a physics match.
+const requestState={preferences:{},active:{intent:{plan:parseIntent('I want to see physics content'),focused:true,mode:'both'}}};
+const upcoming=[['dance','Unknown','dance'],['cooking','Food','recipe'],['unreadable','Unknown',''],['physics','Learning','quantum mechanics']].map(([id,category,matchText],index)=>video(id,index*800,!!filterReason(requestState,{category,matchText,analysis:{kind:'Unknown'}})));
+for(const platform of ['TikTok','Instagram']) {
+  assert.equal(filterPresentation({...mode,platform,blocked:upcoming[0].blocked}),'skip');
+  assert.equal(createAutoSkip().next({...input,items:upcoming}).target.id,'physics');
+}
 let pauses=0;const silenced={video:{muted:false,pause(){pauses++;}}};
 silenceFlagged(silenced,true);silenceFlagged(silenced,true);assert.equal(silenced.video.muted,true);assert.equal(pauses,2);
 silenceFlagged(silenced,false);assert.equal(silenced.video.muted,false);assert.ok(!Object.hasOwn(silenced,'originalMuted'));
@@ -61,3 +86,5 @@ advanceVideo({active,target,retry:true},{click(){native++;}},options);assert.equ
 advanceVideo({active,target,retry:true},null,options);assert.equal(scrolled,800,'failed direct scroll falls back to verified scrollable ancestor');
 feed.scrollHeight=800;scrolled=0;advanceVideo({active,target,retry:true},null,options);assert.equal(scrolled,0);assert.equal(jumped,2);
 console.log('Passed auto-skip: lookahead, reveal, session/edit/visibility gates, throttle, bounded retries, automatic backoff recovery, native/scroll-container fallbacks.');
+
+

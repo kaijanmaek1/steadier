@@ -1,17 +1,16 @@
 (async () => {
   let keyboardHost = null, keyboardShadow = null, isolateKeys = null;
-  // Register before asynchronous imports and before the site's shortcut handlers.
   for (const type of ['keydown','keypress','keyup']) window.addEventListener(type,event => {
     if (isolateKeys && keyboardHost) isolateKeys(event,keyboardHost,keyboardShadow?.activeElement);
   },true);
-  const {analyse, allowedPage, clampPosition} = await import(chrome.runtime.getURL('classify.mjs'));
-  const {extract} = await import(chrome.runtime.getURL('extract.mjs'));
   const {isolateEditableKeys} = await import(chrome.runtime.getURL('keyboard.mjs'));
   isolateKeys = isolateEditableKeys;
-  const {createAutoSkip,advanceVideo,filterPresentation,silenceFlagged,forwardTarget} = await import(chrome.runtime.getURL('auto-skip.mjs'));
+  const {analyse, allowedPage, clampPosition} = await import(chrome.runtime.getURL('classify.mjs'));
+  const {createAutoSkip,advanceVideo,filterPresentation,silenceFlagged,forwardTarget,findNextVideoControl} = await import(chrome.runtime.getURL('auto-skip.mjs'));
+  const {extract} = await import(chrome.runtime.getURL('extract.mjs'));
   const {aliases, parseIntent, filterReason, summariseIntent,positiveSearchQuery} = await import(chrome.runtime.getURL('intent.mjs'));
   const {likeButtons, buttonLikeState} = await import(chrome.runtime.getURL('likes.mjs'));
-  const {createActionQueue, createPanelState, reconcilePanelState, sessionKey, selectCurrent, createMediaMask} = await import(chrome.runtime.getURL('panel-state.mjs'));
+  const {createActionQueue, createPanelState, reconcilePanelState, sessionKey, selectCurrent, createMediaMask, isolatePanelKeyboard, clampPanelSize, resizePanelRect} = await import(chrome.runtime.getURL('panel-state.mjs'));
   const categories = Object.keys(aliases);
   const scopedTypes = new Set(['end', 'intent', 'seen', 'vote', 'category', 'update', 'like']);
   if (document.readyState === 'loading') await new Promise(resolve=>document.addEventListener('DOMContentLoaded',resolve,{once:true}));
@@ -21,12 +20,14 @@
   document.documentElement.append(host);
   const shadow = host.attachShadow({mode:'closed'});
   keyboardHost = host;keyboardShadow = shadow;
+  isolatePanelKeyboard(shadow);
   shadow.innerHTML = `<style>
-    :host{all:initial;font:14px system-ui;color:#233d37}*{box-sizing:border-box}
-    section{width:min(350px,calc(100vw - 16px));max-height:85vh;overflow:auto;background:#f8faf5;border:1px solid #cbd8c2;border-radius:16px;padding:18px;box-shadow:0 8px 40px #0003}
+    :host{all:initial;color-scheme:light;font:14px system-ui;color:#233d37}*{box-sizing:border-box}
+    section{color-scheme:light;width:min(350px,calc(100vw - 16px));max-width:calc(100vw - 16px);max-height:calc(100vh - 16px);overflow:auto;background:#f8faf5;border:1px solid #cbd8c2;border-radius:16px;padding:18px;box-shadow:0 8px 40px #0003}
     h2{margin:0;font-size:20px}h3{font-size:15px;margin:16px 0 8px}
     p,small{line-height:1.5;color:#4b6048}p{font-size:13px}small,label{font-size:12px}
-    textarea{width:100%;min-height:80px;resize:vertical;font:13px system-ui;padding:9px;border:1px solid #8a9f82;border-radius:7px;color:#233d37}
+    textarea,input,select,option{color-scheme:light}section textarea,section input:not([type=range]):not([type=checkbox]),section select,section option{background:#fff;color:#000;caret-color:#000}textarea::placeholder,input::placeholder{color:#595959;opacity:1}
+    textarea{width:100%;min-height:80px;resize:vertical;font:13px system-ui;padding:9px;border:1px solid #8a9f82;border-radius:7px;color:#000;background:#fff}
     button,select{font:inherit;border:1px solid #8a9f82;border-radius:7px;background:white;padding:10px;color:#345239;cursor:pointer;min-height:44px}
     button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,#drag-handle:focus-visible,summary:focus-visible{outline:3px solid #9a6723;outline-offset:2px}
     button:disabled{opacity:.55;cursor:wait}.primary{background:#365c43;color:white;width:100%;margin-top:10px}
@@ -36,14 +37,19 @@
     summary{cursor:pointer;margin:14px 0;padding:8px 0;min-height:40px}
     #message,#video-update-note{font-size:12px;line-height:1.5}#message:empty,#video-update-note:empty{display:none}#message[data-error=true]{color:#8b2828}
     #drag-handle{cursor:grab;touch-action:none;user-select:none}button[aria-pressed=true]{background:#dcebd6;border-color:#58784c;font-weight:600}
+    .resize-edge{position:absolute;z-index:2;touch-action:none;user-select:none;border:0;border-radius:0;padding:0;margin:0;min-height:0;background:transparent}
+    .resize-edge[hidden]{display:none}.resize-edge[data-edge=n],.resize-edge[data-edge=s]{left:12px;right:12px;height:8px;cursor:ns-resize}.resize-edge[data-edge=n]{top:-3px}.resize-edge[data-edge=s]{bottom:-3px}
+    .resize-edge[data-edge=e],.resize-edge[data-edge=w]{top:12px;bottom:12px;width:8px;cursor:ew-resize}.resize-edge[data-edge=e]{right:-3px}.resize-edge[data-edge=w]{left:-3px}
+    .resize-edge[data-edge=nw],.resize-edge[data-edge=ne],.resize-edge[data-edge=sw],.resize-edge[data-edge=se]{width:16px;height:16px}.resize-edge[data-edge=nw]{top:-3px;left:-3px;cursor:nwse-resize}.resize-edge[data-edge=ne]{top:-3px;right:-3px;cursor:nesw-resize}.resize-edge[data-edge=sw]{bottom:-3px;left:-3px;cursor:nesw-resize}.resize-edge[data-edge=se]{bottom:0;right:0;cursor:nwse-resize;border-radius:0 0 12px 0;background:linear-gradient(135deg,transparent 45%,#58784c 46%,#58784c 53%,transparent 54%,transparent 65%,#58784c 66%,#58784c 73%,transparent 74%)}
+    .resize-edge:focus-visible{outline:3px solid #9a6723;outline-offset:2px}
     .checkbox{display:block;margin:10px 0;line-height:1.5}.checkbox input{margin-right:7px;accent-color:#537953}
-  </style><section aria-label="Steadier wellbeing panel"><div class="row" id="drag-handle" tabindex="0" role="group" aria-label="Move Steadier panel by dragging or with arrow keys"><h2>Steadier</h2><button id="collapse" aria-label="Minimise panel" aria-expanded="true" aria-controls="body">-</button></div><div id="body"></div><p id="message" role="status" aria-live="polite" aria-atomic="true"></p></section>`;
+  </style><section aria-label="Steadier wellbeing panel"><div class="row" id="drag-handle" tabindex="0" role="group" aria-label="Move Steadier panel by dragging or with arrow keys"><h2>Steadier</h2><button id="collapse" aria-label="Minimise panel" aria-expanded="true" aria-controls="body">-</button></div><div id="body"></div><p id="message" role="status" aria-live="polite" aria-atomic="true"></p></section>${['n','s','e','w','nw','ne','sw','se'].map(edge => edge === 'se' ? `<button class="resize-edge" data-edge="se" aria-label="Resize panel with arrow keys; Shift for larger steps" title="Drag corner to resize, or use arrow keys"></button>` : `<div class="resize-edge" data-edge="${edge}" aria-hidden="true"></div>`).join('')}`;
   const $ = selector => shadow.querySelector(selector);
   const escape = value => String(value).replace(/[&<>"']/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[character]));
   const panel = createPanelState(), tracked = new Map(), ephemeralIds = new WeakMap();
   const requestQueue = createActionQueue(), actionQueue = createActionQueue();
   let data = null, current = null, minimised = false, saving = false, polling = false;
-  let position = null, drag = null;
+  let position = null, drag = null, panelSize = null, resizing = null;
   const autoSkip = createAutoSkip();
   let autoSkipEnabled = true;
 
@@ -75,9 +81,14 @@
       const response = await chrome.runtime.sendMessage(captured);
       if (!response || response.error) throw Error(response?.error || 'Steadier did not receive a response. Refresh the page and try again.');
       const previous = data?.state;
+      const intentChanged = JSON.stringify(previous?.active?.intent) !== JSON.stringify(response.state.active?.intent);
       const reset = captured.type === 'reset' || (!!previous?.consent && !response.state.consent);
       const structureChanged = reconcilePanelState(panel, previous, response.state, {reset});
       data = response;
+      if (intentChanged) {
+        autoSkip.reset(sessionKey(response.state));
+        for (const item of tracked.values()) item.revealed = false;
+      }
       if (structureChanged) resetTrackedSession(response.state);
       else for (const item of tracked.values()) {
         const stored = response.state.active?.seen.find(video => video.id === item.id);
@@ -114,14 +125,15 @@
   function intentOptions() {return panel.intent || data?.state.active?.intent || data?.state.lastIntent || {mode:'both',prompt:'',focused:true,strict:false};}
   function intentForm() {
     const options = intentOptions();
-    return `<div id="intent-form"><h3>What would you like to see?</h3><label for="style">Content style</label><select id="style" style="width:100%;margin:7px 0"><option value="both" ${options.mode === 'both' ? 'selected' : ''}>A mix / follow my prompt</option><option value="memes" ${options.mode === 'memes' ? 'selected' : ''}>Memes and humour</option><option value="serious" ${options.mode === 'serious' ? 'selected' : ''}>Serious / informational content</option></select><label for="request">Tell Steadier what you want</label><textarea id="request" maxlength="500" placeholder="Calm nature videos and dogs, less politics">${escape(options.prompt || '')}</textarea>${data.platform === 'TikTok' ? `<p id="search-query"></p><button id="find-videos" type="button" ${data.state.active ? '' : 'disabled'}>Find videos on TikTok</button>${!data.state.active ? '<p><small>Start a session to search with these filters.</small></p>' : ''}` : ''}<label class="checkbox"><input id="focused" type="checkbox" ${options.focused !== false ? 'checked' : ''}>Soften topics outside my request</label><label class="checkbox"><input id="strict" type="checkbox" ${options.strict ? 'checked' : ''}>Also soften uncertain videos</label><small id="intent-summary" aria-live="polite"></small><p><small>Find videos opens TikTok search. Steadier filters loaded results and cannot control their ranking. Local English rules match readable text. Dogs matches dog/puppy words, not all animals. Unknown videos may pass unless you enable uncertain filtering. Your prompt is saved locally.</small></p></div>`;
+    return `<div id="intent-form"><h3>What would you like to see?</h3><label for="style">Content style</label><select id="style" style="width:100%;margin:7px 0"><option value="both" ${options.mode === 'both' ? 'selected' : ''}>A mix / follow my prompt</option><option value="memes" ${options.mode === 'memes' ? 'selected' : ''}>Memes and humour</option><option value="serious" ${options.mode === 'serious' ? 'selected' : ''}>Serious / informational content</option></select><span id="request-label" style="font-size:12px">Tell Steadier what you want</span><iframe id="request-frame" title="Tell Steadier what you want" sandbox="allow-same-origin" style="display:block;width:100%;height:100px;border:0;background:#fff;color-scheme:light"></iframe>${data.platform === 'TikTok' ? `<p id="search-query"></p><button id="find-videos" type="button" ${data.state.active ? '' : 'disabled'}>Find videos on TikTok</button>${!data.state.active ? '<p><small>Start a session to search with these filters.</small></p>' : ''}` : ''}<label class="checkbox"><input id="focused" type="checkbox" ${options.focused !== false ? 'checked' : ''}>Block videos that do not match my request</label><label class="checkbox"><input id="strict" type="checkbox" ${options.strict ? 'checked' : ''}>Also soften uncertain videos</label><small id="intent-summary"></small><p><small>Local English keyword rules, not a conversational AI. Physics requests also match a small set of related physics terms; other unknown words are matched literally. Serious means informational style, not verified facts. Your prompt is saved locally.</small></p></div>`;
   }
+  function promptEditor() {return $('#request-frame')?.contentDocument?.getElementById('request');}
   function readIntent() {
-    if (!$('#request')) return {...intentOptions()};
-    return {mode:$('#style').value,prompt:$('#request').value,focused:$('#focused').checked,strict:$('#strict').checked};
+    if (!$('#request-frame')) return {...intentOptions()};
+    return {mode:$('#style').value,prompt:promptEditor()?.value ?? intentOptions().prompt ?? '',focused:$('#focused').checked,strict:$('#strict').checked};
   }
   function focusSnapshot() {
-    const element = shadow.activeElement;
+    const element = shadow.activeElement === $('#request-frame') ? promptEditor() : shadow.activeElement;
     let start, end;
     try {start = element?.selectionStart;end = element?.selectionEnd;} catch (_) {}
     return {id:element?.id,start,end,videoId:element?.closest('#current')?.dataset.videoId,scroll:shadow.querySelector('section').scrollTop};
@@ -129,7 +141,8 @@
   function restoreFocus(snapshot, requestedId) {
     let id = requestedId || snapshot.id;
     if (!requestedId && snapshot.videoId && snapshot.videoId !== current?.id) id = 'current-heading';
-    const element = id && shadow.getElementById(id);
+    if (id === 'request' && !promptEditor() && $('#request-frame')) $('#request-frame').pendingFocus = {snapshot,requestedId};
+    const element = id === 'request' ? promptEditor() : id && shadow.getElementById(id);
     if (element) {
       element.focus({preventScroll:!requestedId});
       if (!requestedId && typeof snapshot.start === 'number' && element.setSelectionRange) {
@@ -144,6 +157,9 @@
     const openDetails = new Set([...shadow.querySelectorAll('details[open]')].map(element => element.id));
     const state = data.state;
     $('#body').hidden = minimised;
+    $('section').style.minHeight = minimised ? '0' : 'min(180px,calc(100vh - 16px))';
+    for (const edge of shadow.querySelectorAll('.resize-edge')) edge.hidden = minimised;
+    applyPanelSize();
     $('#collapse').textContent = minimised ? '+' : '-';
     $('#collapse').setAttribute('aria-label', minimised ? 'Expand panel' : 'Minimise panel');
     $('#collapse').setAttribute('aria-expanded', String(!minimised));
@@ -154,13 +170,13 @@
     }
     const active = !!state.active, last = state.sessions.at(-1);
     const moodForm = `<h3 id="mood-heading">${panel.ending ? 'How do you feel after browsing?' : 'How are you feeling before browsing?'}</h3><div class="score"><output id="value" for="mood">${panel.mood}</output><small> /100</small></div><label for="mood">Your current mood: 0 very low, 100 very good</label><input id="mood" type="range" min="0" max="100" value="${panel.mood}" aria-describedby="mood-help">${!state.consent ? `<label class="checkbox"><input type="checkbox" id="consent" ${panel.consent ? 'checked' : ''}>Store mood, topic labels, likes, prompts and ratings locally in this extension. No captions or video recordings are saved.</label>` : ''}${!panel.ending ? intentForm() : ''}<button id="submit" class="primary" ${canSubmitMood() && !saving ? '' : 'disabled'}>${panel.ending ? 'Save final mood' : 'Start session'}</button><p id="mood-help"><small>${panel.touched ? 'Your mood score is confirmed.' : 'Move the slider to confirm your score, even if you choose 50.'}</small></p>${panel.ending ? '<button id="continue">Continue browsing</button>' : ''}`;
-    $('#body').innerHTML = `<p>${data.platform} web / text and comment estimates</p>${!active || panel.ending ? moodForm : `<p id="session-status" tabindex="-1">Session active / starting mood <b>${state.active.before}/100</b><br><span id="view-count">${state.active.seen.length}</span> videos viewed / <span id="likes-count">${Object.keys(state.likes || {}).length}</span> learned likes</p><div id="current"></div><button id="end" class="primary">End session & check mood</button><p><small>Use End session before leaving. An interrupted session resumes when you return.</small></p>`}${active && !panel.ending ? `<details id="session-request"><summary>Change my session request</summary>${intentForm()}<button id="apply-intent" class="primary">Apply request</button></details>` : ''}<details id="preferences"><summary>Feed preferences</summary>${categories.map(category => `<div class="row pref"><label for="pref-${category}">${category}</label><select id="pref-${category}" data-pref="${category}">${[['adaptive','Adaptive'],['show','Always show'],['hide','Soften']].map(([value,label]) => `<option value="${value}" ${state.preferences[category] === value ? 'selected' : ''}>${label}</option>`).join('')}</select></div>`).join('')}<small>Filters apply during an active session. Unknown topics stay visible unless you choose to soften uncertain videos. Always show bypasses learned filtering; session requests can still soften a topic.</small></details><details id="history"><summary>History & privacy (${state.sessions.length} sessions)</summary><p>${last ? `Last session: ${last.before} to ${last.after} (${last.after-last.before >= 0 ? '+' : ''}${last.after-last.before} points)` : 'No completed sessions yet.'}</p><p>Data stays in extension storage. TikTok and Instagram have separate histories, separate from the demo website.</p><button id="export">Export data</button> <button id="delete">Delete data</button><div id="confirm">${panel.confirmDelete ? '<p>Delete this platform\'s history, saved prompts, preferences and active session?</p><button id="cancel-delete">Cancel</button> <button id="yes">Delete permanently</button>' : ''}</div><p>Reads available captions, hashtags, subtitle text and visible comments. Does not fact-check claims or read text burned into video images. Does not change platform recommendations directly.</p></details>`;
+    $('#body').innerHTML = `<p>${data.platform} web / text and comment estimates</p>${!active || panel.ending ? moodForm : `<p id="session-status" tabindex="-1">Session active / starting mood <b>${state.active.before}/100</b><br><span id="view-count">${state.active.seen.length}</span> videos viewed / <span id="likes-count">${Object.keys(state.likes || {}).length}</span> learned likes</p><div id="current"></div><button id="end" class="primary">End session & check mood</button><p><small>Use End session before leaving. An interrupted session resumes when you return.</small></p>`}${active && !panel.ending ? `<details id="session-request"><summary>Change my session request</summary>${intentForm()}<button id="apply-intent" class="primary">Apply request</button></details>` : ''}<details id="preferences"><summary>Feed preferences</summary>${categories.map(category => `<div class="row pref"><label for="pref-${category}">${category}</label><select id="pref-${category}" data-pref="${category}">${[['adaptive','Adaptive'],['show','Always show'],['hide','Soften']].map(([value,label]) => `<option value="${value}" ${state.preferences[category] === value ? 'selected' : ''}>${label}</option>`).join('')}</select></div>`).join('')}<small>Filters apply during an active session. Focused requests also filter videos without readable matching text. Reveal lets you inspect a covered video. Always show bypasses learned filtering; session requests can still soften a topic.</small></details><details id="history"><summary>History & privacy (${state.sessions.length} sessions)</summary><p>${last ? `Last session: ${last.before} to ${last.after} (${last.after-last.before >= 0 ? '+' : ''}${last.after-last.before} points)` : 'No completed sessions yet.'}</p><p>Data stays in extension storage. TikTok and Instagram have separate histories, separate from the demo website.</p><button id="export">Export data</button> <button id="delete">Delete data</button><div id="confirm">${panel.confirmDelete ? '<p>Delete this platform\'s history, saved prompts, preferences and active session?</p><button id="cancel-delete">Cancel</button> <button id="yes">Delete permanently</button>' : ''}</div><p>Reads available captions, hashtags, subtitle text and visible comments. Does not fact-check claims or read text burned into video images. Does not change platform recommendations directly.</p></details>`;
     for (const details of shadow.querySelectorAll('details')) if (openDetails.has(details.id)) details.open = true;
     bindForms();renderCurrent({force:true});restoreFocus(snapshot,focusId);updateBusyControls();
-    if (active && !panel.ending && data.platform === 'TikTok') {
+    if (active && !panel.ending) {
       const label = document.createElement('label');label.className = 'checkbox';
       const toggle = document.createElement('input');toggle.type = 'checkbox';toggle.id = 'auto-skip';toggle.checked = autoSkipEnabled;
-      label.append(toggle,document.createTextNode('Automatically skip softened TikTok videos'));
+      label.append(toggle,document.createTextNode('Automatically skip nonmatching or softened videos'));
       $('#session-status').after(label);
       toggle.onchange = () => {autoSkipEnabled = toggle.checked;autoSkip.reset(sessionKey(data.state));applyFilters();skipSoftened();announce(autoSkipEnabled ? 'Automatic skipping enabled.' : 'Automatic skipping paused. Reveal controls remain available.');};
     }
@@ -183,9 +199,31 @@
     }
     if ($('#end')) $('#end').onclick = () => {panel.ending = true;panel.mood = 50;panel.touched = false;render({focusId:'mood'});};
     if ($('#continue')) $('#continue').onclick = () => {panel.ending = false;render({focusId:'end'});};
-    if ($('#request')) {
+    if ($('#request-frame')) {
       const updateIntent = () => {panel.intent = readIntent();panel.intentDirty = true;updateIntentSummary();};
-      for (const id of ['request','style','focused','strict']) $('#'+id).addEventListener('input',updateIntent);
+      for (const id of ['style','focused','strict']) $('#'+id).addEventListener('input',updateIntent);
+      const frame = $('#request-frame'), initialPrompt = intentOptions().prompt || '';
+      // A separate document keeps native typing away from the website's window/
+      // document capture listeners. Stopping shadow-root bubbling is too late.
+      frame.onload = () => {
+        if (!frame.isConnected) return;
+        const doc = frame.contentDocument;
+        if (!doc || doc.getElementById('request')) return;
+        doc.documentElement.style.cssText = 'height:100%;color-scheme:light;background:#fff';
+        doc.body.style.cssText = 'height:100%;margin:0;background:#fff';
+        const editor = doc.createElement('textarea');
+        editor.id = 'request';editor.maxLength = 500;
+        editor.setAttribute('aria-label','Tell Steadier what you want');
+        editor.placeholder = 'Calm nature videos and dogs, less politics';
+        editor.style.cssText = 'box-sizing:border-box;width:100%;height:100%;resize:none;font:13px system-ui;padding:9px;border:1px solid #8a9f82;border-radius:7px;background:#fff;color:#000;caret-color:#000;color-scheme:light';
+        editor.value = initialPrompt;editor.addEventListener('input',updateIntent);
+        doc.body.append(editor);
+        if (frame.pendingFocus) {
+          const pending = frame.pendingFocus;delete frame.pendingFocus;
+          restoreFocus(pending.snapshot,pending.requestedId);
+        }
+      };
+      frame.srcdoc = '<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Steadier request</title></head><body></body></html>';
       updateIntentSummary();
       if ($('#find-videos')) $('#find-videos').onclick = async () => {
         if (saving || !data.state.active) return;
@@ -194,7 +232,7 @@
         const saved = await perform({type:'intent',intent},{onSuccess:response => {panel.intent = response.state.active.intent;panel.intentDirty = false;}});
         if (saved && sessionKey(data.state) === origin && (data.state.resetEpoch || 0) === epoch) location.assign(`https://www.tiktok.com/search/video?q=${encodeURIComponent(query)}`);
       };
-      if ($('#apply-intent')) $('#apply-intent').onclick = () => perform({type:'intent',intent:readIntent()},{onSuccess:response => {panel.intent = response.state.active.intent;panel.intentDirty = false;},successMessage:'Session request applied.'});
+      if ($('#apply-intent')) $('#apply-intent').onclick = () => perform({type:'intent',intent:readIntent()},{onSuccess:response => {panel.intent = response.state.active.intent;panel.intentDirty = false;},successMessage:'Request applied to current and upcoming videos. Nonmatching videos are skipped automatically when enabled, or covered if navigation is unavailable.'});
     }
     for (const select of shadow.querySelectorAll('[data-pref]')) select.onchange = () => perform({type:'preference',category:select.dataset.pref,value:select.value},{successMessage:'Preference saved.'});
     if ($('#export')) $('#export').onclick = exportData;
@@ -231,17 +269,9 @@
     }
     const item = current;
     container.dataset.videoId = item?.id || '';
-    if (!item) {container.innerHTML = `<h3 id="current-heading" tabindex="-1">No current video</h3><p>Keep a video in view for two seconds. ${data.platform === 'TikTok' && autoSkipEnabled ? 'Softened videos are skipped automatically. Turn off automatic skipping to reveal or correct one.' : 'If it is covered, use Reveal video to inspect or correct its topic.'}</p>`;return;}
+    if (!item) {container.innerHTML = '<h3 id="current-heading" tabindex="-1">No current video</h3><p>Keep a video in view for two seconds. Nonmatching or softened videos are skipped while automatic skipping is enabled. Turn it off to inspect a covered video with Reveal.</p>';return;}
     const originSession = sessionKey(data.state), vote = data.state.active?.feedback[item.id];
-    container.innerHTML = `<h3 id="current-heading" tabindex="-1">Current video topic</h3><label for="category">Correct the estimated topic</label><select id="category">${['Unknown',...categories].map(category => `<option ${category === item.category ? 'selected' : ''}>${category}</option>`).join('')}</select><p><small>${escape(item.analysis.kind)} / ${escape(item.analysis.confidence)} confidence<br>${escape(item.analysis.verification)}<br>Sources: ${escape(item.analysis.sources.join(', ') || 'No readable text')}<br>${item.analysis.commentCount} loaded comments read in display order.</small></p><p><small>Open comments to include them. Estimates can be wrong.</small></p><div class="row"><button id="helpful" aria-pressed="${vote === 1}">Helpful</button><button id="unhelpful" aria-pressed="${vote === -1}">Unhelpful</button></div><p id="video-update-note" role="status" aria-live="polite"></p>`;
-    $('#category').onchange = event => {
-      if (rejectStaleControl(item,originSession)) return;
-      const category = event.target.value;
-      perform({type:'category',id:item.id,category,sessionId:data.state.active.sessionId},{onSuccess:response => {
-        const stored = response.state.active.seen.find(video => video.id === item.id);
-        if (stored) {item.category = stored.category;item.manual = true;}
-      },successMessage:'Video topic corrected.'});
-    };
+    container.innerHTML = `<h3 id="current-heading" tabindex="-1">Current video</h3><p><small>Estimated topic: ${escape(item.category)} / ${escape(item.analysis.kind)}. Estimates can be wrong.</small></p><div class="row"><button id="helpful" aria-pressed="${vote === 1}">Helpful</button><button id="unhelpful" aria-pressed="${vote === -1}">Unhelpful</button></div><p id="video-update-note" role="status" aria-live="polite"></p>`;
     for (const [id,value] of [['helpful',1],['unhelpful',-1]]) $('#'+id).onclick = () => {
       if (rejectStaleControl(item,originSession)) return;
       const existing = data.state.active.feedback[item.id];
@@ -263,6 +293,54 @@
     position = clampPosition(x,y,rect.width,rect.height,innerWidth,innerHeight);
     Object.assign(host.style,{left:position.x+'px',top:position.y+'px',right:'auto',bottom:'auto'});
   }
+  function applyPanelSize() {
+    if (!panelSize) return;
+    const fitted = clampPanelSize(panelSize.width,panelSize.height,innerWidth,innerHeight);
+    $('section').style.width = fitted.width+'px';
+    $('section').style.height = minimised ? 'auto' : fitted.height+'px';
+  }
+  function resizeFrom(rect,direction,dx,dy) {
+    const next = resizePanelRect(rect,direction,dx,dy,innerWidth,innerHeight);
+    panelSize = {width:next.width,height:next.height};
+    applyPanelSize();move(next.x,next.y);
+  }
+  function savePanelSize() {
+    chrome.storage.local.set({steadierPanelSize:panelSize,steadierPanelPosition:position}).catch(() => announce('Panel resized, but its size could not be saved.',true));
+  }
+  const panelRect = () => {
+    const rect = host.getBoundingClientRect();
+    return {x:rect.left,y:rect.top,width:rect.width,height:rect.height};
+  };
+  for (const edge of shadow.querySelectorAll('.resize-edge')) {
+    edge.onpointerdown = event => {
+      if (event.button !== 0 || minimised) return;
+      event.preventDefault();event.stopPropagation();
+      const initial = panelRect();move(initial.x,initial.y);
+      resizing = {pointerId:event.pointerId,x:event.clientX,y:event.clientY,rect:panelRect(),direction:edge.dataset.edge};
+      edge.setPointerCapture(event.pointerId);
+    };
+    edge.onpointermove = event => {
+      if (resizing?.pointerId === event.pointerId) resizeFrom(resizing.rect,resizing.direction,event.clientX-resizing.x,event.clientY-resizing.y);
+    };
+    const finishResize = event => {
+      if (resizing?.pointerId !== event.pointerId) return;
+      resizing = null;savePanelSize();
+      if (edge.hasPointerCapture(event.pointerId)) edge.releasePointerCapture(event.pointerId);
+    };
+    edge.onpointerup = finishResize;edge.onpointercancel = finishResize;edge.onlostpointercapture = finishResize;
+    if (edge.dataset.edge === 'se') edge.onkeydown = event => {
+      if (!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key)) return;
+      event.preventDefault();
+      const initial = panelRect(), step = event.shiftKey ? 40 : 10;
+      move(initial.x,initial.y);
+      resizeFrom(panelRect(),'se',event.key === 'ArrowLeft' ? -step : event.key === 'ArrowRight' ? step : 0,event.key === 'ArrowUp' ? -step : event.key === 'ArrowDown' ? step : 0);
+      savePanelSize();
+    };
+  }
+  chrome.storage.local.get('steadierPanelSize').then(result => {
+    const saved = result.steadierPanelSize;
+    if (saved && Number.isFinite(saved.width) && Number.isFinite(saved.height)) {panelSize = saved;applyPanelSize();}
+  }).catch(() => {});
   const handle = $('#drag-handle');
   handle.onpointerdown = event => {
     if (event.target.closest('button') || event.button !== 0) return;
@@ -285,7 +363,7 @@
     const saved = result.steadierPanelPosition;
     if (saved && Number.isFinite(saved.x) && Number.isFinite(saved.y)) move(saved.x,saved.y);
   }).catch(() => {});
-  window.addEventListener('resize',() => {if (position) move(position.x,position.y);});
+  window.addEventListener('resize',() => {applyPanelSize();if (position) move(position.x,position.y);});
   new ResizeObserver(() => {if (position) move(position.x,position.y);}).observe(host);
   $('#collapse').onclick = () => {minimised = !minimised;render();};
   function context(video) {
@@ -361,9 +439,13 @@
     if (!data) return;
     const activeRoots = [];
     const items = [...tracked.values()].sort((a,b) => a.root === b.root ? 0 : a.root.contains(b.root) ? -1 : b.root.contains(a.root) ? 1 : 0);
+    const nextControl = findNextVideoControl(document,data.platform);
+    const rects = new Map(items.filter(item => item.video.isConnected).map(item => [item,item.video.getBoundingClientRect()]));
     for (const item of items) {
       const reason = filterReason(data.state,item,data.softened);
-      const presentation = filterPresentation({blocked:!!reason,revealed:item.revealed,allowed:allowedPage(location.hostname,location.pathname),platform:data.platform,automatic:autoSkipEnabled,active:!!data.state.active});
+      const rect = rects.get(item);
+      const canAdvance = !!nextControl || (!!rect && [...rects].some(([other,bounds]) => other !== item && bounds.width > 0 && bounds.height > 0 && bounds.top > rect.top + 10));
+      const presentation = filterPresentation({blocked:!!reason,revealed:item.revealed,allowed:allowedPage(location.hostname,location.pathname),platform:data.platform,automatic:autoSkipEnabled,active:!!data.state.active,canAdvance});
       silenceFlagged(item,presentation === 'skip');
       item.autoSkipping = presentation === 'skip';
       if (presentation === 'skip') {removeCover(item);continue;}
@@ -409,11 +491,10 @@
     return values.length ? values[0] : null;
   }
   function skipSoftened() {
-    if (!data || data.platform !== 'TikTok') return;
+    if (!data || !['TikTok','Instagram'].includes(data.platform)) return;
     const focused = document.activeElement;
-    const editing = shadow.activeElement?.matches('textarea,select,input:not([type="checkbox"]):not([type="radio"])') || focused?.closest('textarea,select,input:not([type="checkbox"]):not([type="radio"]),[contenteditable="true"],[role="dialog"]');
-    const next = [...document.querySelectorAll('button[data-e2e="arrow-right"],button[data-e2e="arrow-down"]')]
-      .find(button => !button.disabled && button.getBoundingClientRect().width>0 && button.getBoundingClientRect().height>0);
+    const editing = shadow.activeElement === $('#request-frame') || shadow.activeElement?.matches('textarea,select,input:not([type="checkbox"]):not([type="radio"])') || focused?.closest('textarea,select,input:not([type="checkbox"]):not([type="radio"]),[contenteditable="true"],[role="dialog"]');
+    const next = findNextVideoControl(document,data.platform);
     const result = autoSkip.next({key:sessionKey(data.state),enabled:autoSkipEnabled,
       visible:!document.hidden,paused:panel.ending || saving || !!editing || !allowedPage(location.hostname,location.pathname),height:innerHeight,
       canAdvance:!!next && !next.disabled && next.getBoundingClientRect().width>0,
@@ -424,7 +505,7 @@
     advanceVideo(result,next && !next.disabled && next.getBoundingClientRect().width ? next : null);
   }
   function preemptForward(event) {
-    if (!event.isTrusted || !data?.state.active || data.platform !== 'TikTok' || !autoSkipEnabled || panel.ending || saving || document.hidden || !allowedPage(location.hostname,location.pathname)) return;
+    if (!event.isTrusted || !data?.state.active || !['TikTok','Instagram'].includes(data.platform) || !autoSkipEnabled || panel.ending || saving || document.hidden || !allowedPage(location.hostname,location.pathname)) return;
     if (event.type === 'wheel' ? event.deltaY <= 0 || Math.abs(event.deltaX)>Math.abs(event.deltaY) : event.key !== 'ArrowDown') return;
     if (event.composedPath().includes(host) || document.activeElement?.closest('input,textarea,select,[contenteditable="true"],[role="dialog"]')) return;
     const target = forwardTarget([...tracked.values()].map(item=>({item,connected:item.video.isConnected,rect:item.video.getBoundingClientRect(),blocked:!!filterReason(data.state,item,data.softened),revealed:item.revealed})),innerHeight);
@@ -505,3 +586,5 @@
     } catch (error) {announce(error.message,true);}
   });
 })().catch(error => console.error('Steadier could not start:',error));
+
+

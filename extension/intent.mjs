@@ -22,7 +22,10 @@ export function parseIntent(prompt=''){
  if(styles.length===1)mode=styles[0];
  return {include:[...include],exclude:[...exclude],includeTerms:[...includeTerms].slice(0,12),excludeTerms:[...excludeTerms].slice(0,12),mode};
 }
-export function matchesTerm(text,term){const words=tokens(text),family=species[subject(term)];return family?words.some(word=>family.includes(word)):words.includes(term);}
+// Explicit physics vocabulary remains narrower than the Learning category.
+// Generic science, energy, force and mechanics are too ambiguous by themselves.
+const subjectTerms={physics:['physics','physicist','physicists','quantum','newtonian','kinematics','gravity','gravitational','relativity','thermodynamics','electromagnetism','electromagnetic','astrophysics']};
+export function matchesTerm(text,term){const words=tokens(text),family=species[subject(term)]||subjectTerms[term];return family?words.some(word=>family.includes(word)):words.includes(term);}
 export function positiveSearchQuery(prompt='') {
  const plan=parseIntent(prompt),words=tokens(prompt);
  const context=new Set('am have has feel feeling suffering suffer from depression depressed anxiety anxious mood recovery recovering mental health illness treatment therapy medication suicidal suicide selfharm'.split(' '));
@@ -43,9 +46,11 @@ export function filterReason(state,item,softened=[]){
  if(settings?.strict&&unknown)return 'Uncertain content: focused mode';
  if(settings?.focused&&(plan.include.length||plan.includeTerms.length)){
   const match=plan.include.some(category=>category===item.category||matchesCategory(text,category))||plan.includeTerms.some(t=>matchesTerm(text,t));
-  if(!match&&(item.category!=='Unknown'||settings.strict))return 'Outside your requested topics';
+  if(!match)return 'Outside your requested topics';
  }
  if(state.preferences[item.category]!=='show'&&softened.includes(item.category))return `Learned filter: ${item.category}`;
  return '';
 }
 export function summariseIntent(plan,mode){return `Style: ${mode}. More: ${[...plan.include,...plan.includeTerms].join(', ')||'any topic'}. Less: ${[...plan.exclude,...plan.excludeTerms].join(', ')||'nothing specified'}.`;}
+
+
