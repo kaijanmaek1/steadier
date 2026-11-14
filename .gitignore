@@ -12,3 +12,7 @@ Thumbs.db
 
 # Generated extension archive (source is in extension/)
 steadier-extension.zip
+
+# Local QA/browser profiles and generated packages
+outputs/
+*.tar.gz

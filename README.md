@@ -2,7 +2,7 @@
 
 A local-first prototype for mindful social-media use during recovery from depression. Includes a standalone demo and an experimental Edge/Chrome extension for TikTok and Instagram websites.
 
-## Extension (v0.3.0)
+## Extension (v0.3.1)
 
 1. Open edge://extensions or chrome://extensions and enable Developer mode.
 2. Choose Load unpacked and select the extension directory.
@@ -35,9 +35,20 @@ Use Node.js 24 or later:
 ```sh
 node test-engine.mjs
 node extension/test.mjs
+node scripts/check.mjs
 ```
 
 Tests cover classification, text-extraction fixtures, prompt interpretation, filtering, like-state interpretation, session storage, learning and platform isolation. They do not replace live browser testing.
+
+The last command runs all maintained regression suites and JavaScript syntax checks. See [verification status and manual browser checks](docs/TESTING.md).
+
+## Working with the specialist team
+
+[AGENTS.md](AGENTS.md) defines the project lead's responsibilities, specialist ownership rules, three-worker limit and verification expectations. Reusable roles live in [.codex/agents](.codex/agents); project concurrency is configured in [.codex/config.toml](.codex/config.toml). Models and reasoning settings inherit from the primary task.
+
+For future tasks, open this `steadier` directory as the Codex project so its project-level guidance and agent definitions can be discovered.
+
+The current audit and prioritised remaining work are in [the improvement backlog](docs/IMPROVEMENT_BACKLOG.md). Use the primary conversation to give the lead a concrete goal; it coordinates specialists and integrates their changes.
 
 ## Privacy and learning
 
