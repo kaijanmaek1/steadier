@@ -1,4 +1,22 @@
 // Navigation policy only: classifications are estimates, never a mood guarantee.
+export function filterPresentation({blocked,revealed,allowed=true,platform,automatic,active}) {
+  if(!allowed || !blocked || revealed) return 'show';
+  return platform==='TikTok' && automatic && active ? 'skip' : 'cover';
+}
+export function silenceFlagged(item,enabled) {
+  if(enabled) {
+    if(!Object.hasOwn(item,'originalMuted')) item.originalMuted=item.video.muted;
+    item.video.muted=true;item.video.pause();
+  } else if(Object.hasOwn(item,'originalMuted')) {
+    item.video.muted=item.originalMuted;delete item.originalMuted;
+  }
+}
+export function forwardTarget(items,height) {
+  const ordered=items.filter(item=>item.connected && item.rect.width>0 && item.rect.height>0).sort((a,b)=>a.rect.top-b.rect.top);
+  const index=ordered.findIndex(item=>item.rect.top<=height*.25 && item.rect.bottom>=height*.75);
+  if(index<0 || !ordered[index+1]?.blocked || ordered[index+1]?.revealed) return null;
+  return ordered.slice(index+2,index+11).find(item=>!item.blocked || item.revealed)?.item || null;
+}
 export function advanceVideo({active,target,retry},next,{style=getComputedStyle}={}) {
   if(retry && next) {next.click();return;}
   if(retry) {

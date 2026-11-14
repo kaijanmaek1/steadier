@@ -26,7 +26,7 @@ export function reconcilePanelState(panel,previous,next,{reset=false}={}){
 }
 
 export function selectCurrent(items,now=Date.now()){
- return [...items].filter(item=>item.video.isConnected&&item.since&&now-item.since>=2000&&(!item.cover||item.revealed))
+ return [...items].filter(item=>item.video.isConnected&&item.since&&now-item.since>=2000&&!item.autoSkipping&&(!item.cover||item.revealed))
   .sort((a,b)=>b.since-a.since)[0]||null;
 }
 

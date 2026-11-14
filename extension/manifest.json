@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Steadier — mindful TikTok & Instagram",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Local mood check-ins and caption-based video filtering on TikTok and Instagram websites.",
   "permissions": ["storage"],
   "background": {"service_worker": "background.js", "type": "module"},

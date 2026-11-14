@@ -38,7 +38,7 @@ Existing history is retained and added category preferences default to Adaptive.
 
 During an active TikTok session, **Automatically skip softened TikTok videos** advances past videos flagged by your topic, style and request settings. Already-loaded upcoming posts are checked locally; Steadier jumps to the next loaded unflagged post when available, otherwise it tries the site's next-video control. It cannot inspect an unseen feed or reorder TikTok recommendations. Turn the option off to use covers and Reveal instead.
 
-Automatic navigation retries stalled advances and waits briefly between bounded batches rather than switching itself off. In automatic mode, flagged posts show a temporary skipping cover without a Reveal button; turn skipping off to reveal manually. An unflagged video is not guaranteed to be positive or beneficial: the text rules can miss distressing content. OCR, speech and visual-action analysis remain unsupported. Instagram retains cover-and-reveal behaviour.
+Automatic navigation retries stalled advances and waits briefly between bounded batches rather than switching itself off. Automatic mode creates no cover, blocking message or blank replacement. Forward wheel/ArrowDown navigation jumps over loaded flagged cards when an acceptable loaded target exists; flagged media is paused and muted while advancing. Turn skipping off to reveal manually. An unflagged video is not guaranteed to be positive or beneficial: the text rules can miss distressing content. OCR, speech and visual-action analysis remain unsupported. Instagram retains cover-and-reveal behaviour.
 
 ## Install locally
 

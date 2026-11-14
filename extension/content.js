@@ -1,7 +1,7 @@
 ﻿(async () => {
   const {analyse, allowedPage, clampPosition} = await import(chrome.runtime.getURL('classify.mjs'));
   const {extract} = await import(chrome.runtime.getURL('extract.mjs'));
-  const {createAutoSkip,advanceVideo} = await import(chrome.runtime.getURL('auto-skip.mjs'));
+  const {createAutoSkip,advanceVideo,filterPresentation,silenceFlagged,forwardTarget} = await import(chrome.runtime.getURL('auto-skip.mjs'));
   const {aliases, parseIntent, filterReason, summariseIntent} = await import(chrome.runtime.getURL('intent.mjs'));
   const {likeButtons, buttonLikeState} = await import(chrome.runtime.getURL('likes.mjs'));
   const {createActionQueue, createPanelState, reconcilePanelState, sessionKey, selectCurrent, createMediaMask} = await import(chrome.runtime.getURL('panel-state.mjs'));
@@ -195,7 +195,7 @@
     setTimeout(() => URL.revokeObjectURL(url),1000);announce('Your data export has been prepared.');
   }
   function itemIsCurrent(item) {
-    return !!data?.state.active && current === item && tracked.get(item.video) === item && item.video.isConnected && !!item.since && Date.now()-item.since >= 2000 && (!item.cover || item.revealed) && !document.hidden;
+    return !!data?.state.active && current === item && tracked.get(item.video) === item && item.video.isConnected && !!item.since && Date.now()-item.since >= 2000 && !item.autoSkipping && (!item.cover || item.revealed) && !document.hidden;
   }
   function rejectStaleControl(item,originSession) {
     if (itemIsCurrent(item) && sessionKey(data.state) === originSession) return false;
@@ -315,12 +315,12 @@
         if (current === item && previous !== JSON.stringify(analysis) && !panel.ending) renderCurrent();
         continue;
       }
-      if (item) {removeCover(item);observer.unobserve(video);if (current === item) current = null;}
+      if (item) {removeCover(item);silenceFlagged(item,false);observer.unobserve(video);if (current === item) current = null;}
       const stored = data.state.active?.seen.find(known => known.id === id);
       item = {video,root,id,category:stored?.manual ? stored.category : analysis.category,manual:!!stored?.manual,analysis,matchText,since:0,inView:false,revealed:false};
       item.lastLike = readLike(item);tracked.set(video,item);observer.observe(video);
     }
-    for (const [video,item] of tracked) if (!video.isConnected) {removeCover(item);tracked.delete(video);observer.unobserve(video);if (current === item) current = null;}
+    for (const [video,item] of tracked) if (!video.isConnected) {removeCover(item);silenceFlagged(item,false);tracked.delete(video);observer.unobserve(video);if (current === item) current = null;}
     applyFilters();
   }
   function removeCover(item,{restoreFocus=false} = {}) {
@@ -343,6 +343,10 @@
     const items = [...tracked.values()].sort((a,b) => a.root === b.root ? 0 : a.root.contains(b.root) ? -1 : b.root.contains(a.root) ? 1 : 0);
     for (const item of items) {
       const reason = filterReason(data.state,item,data.softened);
+      const presentation = filterPresentation({blocked:!!reason,revealed:item.revealed,allowed:allowedPage(location.hostname,location.pathname),platform:data.platform,automatic:autoSkipEnabled,active:!!data.state.active});
+      silenceFlagged(item,presentation === 'skip');
+      item.autoSkipping = presentation === 'skip';
+      if (presentation === 'skip') {removeCover(item);continue;}
       const coveredByParent = activeRoots.some(root => root === item.root || root.contains(item.root));
       const shouldCover = allowedPage(location.hostname,location.pathname) && !!reason && !item.revealed && !coveredByParent;
       if (!shouldCover) {removeCover(item);continue;}
@@ -364,24 +368,21 @@
         if (previousFocus && item.root.contains(previousFocus) && !cover.contains(previousFocus)) {item.preCoverFocus = previousFocus;reveal.focus({preventScroll:true});}
         item.mask = createMediaMask(item.root,cover);
       }
-      const automatic = data.platform === 'TikTok' && autoSkipEnabled && !!data.state.active && !panel.ending;
       const label = item.cover.querySelector('[data-steadier-reason]');
-      const message = automatic ? 'Steadier: skipping this video… Turn off automatic skipping in the panel to reveal it.' : `Steadier: ${reason}`;
+      const message = `Steadier: ${reason}`;
       if (label.textContent !== message) label.textContent = message;
       const revealButton = item.cover.querySelector('button');
-      if (automatic && document.activeElement === revealButton) {item.cover.tabIndex = -1;item.cover.focus({preventScroll:true});}
-      revealButton.hidden = automatic;
+      revealButton.hidden = false;
       const focus = document.activeElement;
       if (focus && item.root.contains(focus) && !item.cover.contains(focus)) {
         if (!item.preCoverFocus) item.preCoverFocus = focus;
-        if (automatic) {item.cover.tabIndex = -1;item.cover.focus({preventScroll:true});}
-        else item.cover.querySelector('button').focus({preventScroll:true});
+        item.cover.querySelector('button').focus({preventScroll:true});
       }
       item.mask.refresh();item.video.pause();
     }
   }
   document.addEventListener('play',event => {
-    if ([...tracked.values()].some(item => item.cover && item.root.contains(event.target))) event.target.pause();
+    if ([...tracked.values()].some(item => (item.cover || item.autoSkipping) && item.root.contains(event.target))) event.target.pause();
   },true);
   function readLike(item) {
     const values = likeButtons(item.root,data.platform).map(button => buttonLikeState(button,data.platform)).filter(value => value !== null);
@@ -398,11 +399,19 @@
       canAdvance:!!next && !next.disabled && next.getBoundingClientRect().width>0,
       items:[...tracked.values()].map(item=>({item,id:item.id,connected:item.video.isConnected,rect:item.video.getBoundingClientRect(),blocked:!!filterReason(data.state,item,data.softened),revealed:item.revealed}))});
     if (!result) return;
-    if (result.waiting) {announce('Still looking for another video. Retrying shortly.');return;}
+    if (result.waiting) return;
     // Never click generic controls or send platform feedback.
     advanceVideo(result,next && !next.disabled && next.getBoundingClientRect().width ? next : null);
-    announce('Skipping softened content. Estimates can be wrong.');
   }
+  function preemptForward(event) {
+    if (!event.isTrusted || !data?.state.active || data.platform !== 'TikTok' || !autoSkipEnabled || panel.ending || saving || document.hidden || !allowedPage(location.hostname,location.pathname)) return;
+    if (event.type === 'wheel' ? event.deltaY <= 0 || Math.abs(event.deltaX)>Math.abs(event.deltaY) : event.key !== 'ArrowDown') return;
+    if (event.composedPath().includes(host) || document.activeElement?.closest('input,textarea,select,[contenteditable="true"],[role="dialog"]')) return;
+    const target = forwardTarget([...tracked.values()].map(item=>({item,connected:item.video.isConnected,rect:item.video.getBoundingClientRect(),blocked:!!filterReason(data.state,item,data.softened),revealed:item.revealed})),innerHeight);
+    if (target) {event.preventDefault();event.stopImmediatePropagation();target.video.scrollIntoView({behavior:'instant',block:'center'});}
+  }
+  document.addEventListener('wheel',preemptForward,{capture:true,passive:false});
+  document.addEventListener('keydown',preemptForward,true);
   function watchLike(event) {
     if (!event.isTrusted || !data?.state.active || !allowedPage(location.hostname,location.pathname)) return;
     const item = [...tracked.values()].find(candidate => candidate.root.contains(event.target) && (event.type === 'dblclick' ? candidate.video === event.target : likeButtons(candidate.root,data.platform).some(button => button.contains(event.target))));
@@ -432,7 +441,7 @@
       item.since = item.inView && !document.hidden ? Date.now() : 0;
     }
     syncCurrent();skipSoftened();
-  },{threshold:[0,.5]});
+  },{threshold:[0,.25,.5,.75]});
   document.addEventListener('visibilitychange',() => {
     for (const item of tracked.values()) item.since = !document.hidden && item.inView ? Date.now() : 0;
     syncCurrent();
@@ -442,14 +451,14 @@
   let fastScanTimer = null;
   function scheduleScan() {
     if (fastScanTimer !== null) return;
-    fastScanTimer = setTimeout(() => {fastScanTimer = null;scan();syncCurrent();skipSoftened();},100);
+    fastScanTimer = setTimeout(() => {fastScanTimer = null;scan();syncCurrent();skipSoftened();},32);
   }
   new MutationObserver(records => {
     if (records.some(record => !record.target.closest?.('[data-steadier-cover],#steadier-extension') &&
       [...record.addedNodes,...record.removedNodes].some(node => node.nodeType !== 1 || !node.matches?.('[data-steadier-cover],#steadier-extension')))) scheduleScan();
   }).observe(document.documentElement,{childList:true,subtree:true});
   document.addEventListener('scroll',scheduleScan,{capture:true,passive:true});
-  setInterval(skipSoftened,350);
+  setInterval(skipSoftened,200);
   setInterval(async () => {
     if (polling) return;
     polling = true;

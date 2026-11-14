@@ -19,7 +19,7 @@ The runner validates extension resource paths, syntax-checks JavaScript modules 
 | `extension/test-accessibility.mjs` | Production media-mask attribute ownership/restoration on DOM-shaped fixtures and secondary-text contrast calculated from source colours |
 | `extension/test-auto-skip.mjs` | Loaded-post lookahead, reveal priority, session/visibility/pause gates, navigation cooldown, stalled-navigation retries, missing-next handling and bounded retry backoff |
 
-Automatic TikTok skipping requires a live browser check: reload the extension and TikTok, start a session, soften a matching topic, and verify advancement, the off switch, Reveal with skipping off, and automatic retry after a bounded batch of advances. Check stopping at session end and while editing a request. These live checks have not been performed for this change.
+Automatic TikTok skipping requires a live browser check: reload the extension and TikTok, start a session, soften a matching topic, and verify no blocking overlays, forward-scroll lookahead, reversible muting, advancement, the off switch, Reveal with skipping off, and automatic retry after a bounded batch of advances. Check stopping at session end and while editing a request. These live checks have not been performed for this change.
 
 Fixture objects and mock storage do not establish live selector accuracy, native browser focus, tab order, the accessibility tree or screen-reader output. Source-colour contrast calculations do not establish the browser's computed cascade in every state.
 
